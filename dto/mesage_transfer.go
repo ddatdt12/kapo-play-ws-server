@@ -7,10 +7,13 @@ import (
 type MessageType string
 
 const (
-	// MessageTransferTypeMessage is the type of message transfer
-	SendMessage MessageType = "send_message"
-	// MessageTransferTypeUser is the type of message transfer
-	NewMessage MessageType = "new_message"
+	// MessageTransferTypeSendMessage is the type of message transfer
+	SendMessage    MessageType = "send_message"
+	NewMessage     MessageType = "new_message"
+	StartGame      MessageType = "start_game"
+	SkipGame       MessageType = "skip_game"
+	NextQuestion   MessageType = "next_question"
+	AnswerQuestion MessageType = "answer_question"
 )
 
 type MessageTransfer struct {
