@@ -6,11 +6,12 @@ package ws
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"time"
 
-	"github.com/ddatdt12/kapo-play-ws-server/dto"
-	"github.com/ddatdt12/kapo-play-ws-server/models"
+	"github.com/ddatdt12/kapo-play-ws-server/src/dto"
+	"github.com/ddatdt12/kapo-play-ws-server/src/models"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 )
@@ -36,15 +37,31 @@ var (
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
-	Hub  *Hub
-	Room *models.Room
-	User *models.User
+	Hub        *Hub
+	GameSocket *GameSocket
+	Game       *models.Game
+	User       *models.User
 
 	// The websocket connection.
 	Conn *websocket.Conn
 
+	// Context
+	Ctx context.Context
+
 	// Buffered channel of outbound messages.
-	Send chan models.Message
+	Send chan dto.MessageTransfer
+}
+
+func NewClient(hub *Hub, conn *websocket.Conn, ctx context.Context, gameSocket *GameSocket, game *models.Game, user *models.User) *Client {
+	return &Client{
+		Hub:        hub,
+		Conn:       conn,
+		Ctx:        ctx,
+		GameSocket: gameSocket,
+		Game:       game,
+		User:       user,
+		Send:       make(chan dto.MessageTransfer, 256),
+	}
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -55,7 +72,6 @@ type Client struct {
 func (c *Client) ReadPump() {
 	defer func() {
 		c.Hub.Unregister <- c
-		c.Conn.Close()
 	}()
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -86,12 +102,13 @@ func (c *Client) ReadPump() {
 
 		log.Info().Interface("messageObj", messageObj).Msg("messageObj")
 		if messageObj.Type == dto.SendMessage {
-			log.Info().Interface("messageObj.Type", messageObj.Type).Msg("messageObj.Type")
-			message := models.NewMessage(messageObj.Data)
-
+			log.Info().Interface("messageObj", messageObj).Msg("messageObj")
+			// message := models.NewMessage(messageObj.Data)
 			// NOTE:save message to database
 
-			c.Hub.Messages <- *message
+			c.GameSocket.Send <- messageObj
+		} else {
+			log.Info().Interface("messageObj.Others", messageObj).Msg("messageObj.Others")
 		}
 	}
 }
@@ -118,7 +135,8 @@ func (c *Client) WritePump() {
 				return
 			}
 
-			err := c.Conn.WriteJSON(dto.NewMessageTransfer(dto.NewMessage, message, nil))
+			message.Type = dto.NewMessage
+			err := c.Conn.WriteJSON(message)
 			if err != nil {
 				log.Error().Stack().Err(err).Msg("error")
 				return
@@ -136,4 +154,10 @@ func (c *Client) WritePump() {
 			}
 		}
 	}
+}
+
+func (c *Client) CleanUp() {
+	log.Info().Msg("Client quit game")
+	close(c.Send)
+	c.Conn.Close()
 }

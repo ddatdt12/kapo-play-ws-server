@@ -12,16 +12,19 @@ import (
 
 type HttpImpl struct {
 	httpServer *http.Server
+	wsHub      *ws.Hub
 }
 
-func NewHttpProtocol() *HttpImpl {
-	return &HttpImpl{}
+func NewHttpProtocol(wsHub *ws.Hub) *HttpImpl {
+	return &HttpImpl{
+		wsHub: wsHub,
+	}
 }
 
-func (p *HttpImpl) setupRouter(hub *ws.Hub) {
+func (p *HttpImpl) setupRouter() {
 	http.HandleFunc("/", serveHome)
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		hub.ServeWs(w, r)
+		p.wsHub.ServeWs(w, r)
 	})
 }
 
@@ -42,9 +45,8 @@ func (p *HttpImpl) Listen() {
 	var addr = flag.String("addr", ":8080", "http service address")
 	log.Info().Msgf("Server started on Port %s ", *addr)
 
-	hub := ws.NewHub()
-	go hub.Run()
-	p.setupRouter(hub)
+	go p.wsHub.Run()
+	p.setupRouter()
 
 	p.httpServer = &http.Server{
 		Addr:              *addr,

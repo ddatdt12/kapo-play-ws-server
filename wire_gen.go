@@ -7,12 +7,49 @@
 package main
 
 import (
+	"github.com/ddatdt12/kapo-play-ws-server/infras/db"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http"
+	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http/ws"
+	"github.com/ddatdt12/kapo-play-ws-server/src/repositories"
+	"github.com/ddatdt12/kapo-play-ws-server/src/services"
+	"github.com/google/wire"
 )
 
 // Injectors from wire.go:
 
 func InitHttpProtocol() *http.HttpImpl {
-	httpImpl := http.NewHttpProtocol()
+	redisImpl := db.NewRedisClient()
+	gameRepository := repositories.NewGameRepository(redisImpl)
+	gameService := services.NewGameService(gameRepository)
+	userRepository := repositories.NewUserRepository(redisImpl)
+	userService := services.NewUserService(userRepository, gameRepository)
+	hub := ws.NewHub(gameService, userService)
+	httpImpl := http.NewHttpProtocol(hub)
 	return httpImpl
 }
+
+// wire.go:
+
+var gameRepo = wire.NewSet(repositories.NewGameRepository, wire.Bind(
+	new(repositories.IGameRepository),
+	new(*repositories.GameRepository),
+),
+)
+
+var gameSvc = wire.NewSet(services.NewGameService, wire.Bind(
+	new(services.IGameService),
+	new(*services.GameService),
+),
+)
+
+var userRepo = wire.NewSet(repositories.NewUserRepository, wire.Bind(
+	new(repositories.IUserRepository),
+	new(*repositories.UserRepository),
+),
+)
+
+var userSvc = wire.NewSet(services.NewUserService, wire.Bind(
+	new(services.IUserService),
+	new(*services.UserService),
+),
+)
