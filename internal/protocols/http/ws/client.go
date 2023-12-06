@@ -6,7 +6,6 @@ package ws
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"time"
 
@@ -16,51 +15,37 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
-)
-
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
-
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
 	Hub        *Hub
 	GameSocket *GameSocket
 	Game       *models.Game
 	User       *models.User
+	IsHost     bool
 
 	// The websocket connection.
 	Conn *websocket.Conn
 
 	// Context
-	Ctx context.Context
+	ConnectionCtx *ConnectionContext
 
 	// Buffered channel of outbound messages.
 	Send chan dto.MessageTransfer
+
+	//Information related to game
+	QuestionAnswersMap map[uint]*models.Answer
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn, ctx context.Context, gameSocket *GameSocket, game *models.Game, user *models.User) *Client {
+func NewClient(hub *Hub, conn *websocket.Conn, gameSocket *GameSocket, game *models.Game, user *models.User) *Client {
 	return &Client{
-		Hub:        hub,
-		Conn:       conn,
-		Ctx:        ctx,
-		GameSocket: gameSocket,
-		Game:       game,
-		User:       user,
-		Send:       make(chan dto.MessageTransfer, 256),
+		Hub:                hub,
+		Conn:               conn,
+		ConnectionCtx:      NewConnectionContext(),
+		GameSocket:         gameSocket,
+		Game:               game,
+		User:               user,
+		Send:               make(chan dto.MessageTransfer, 256),
+		QuestionAnswersMap: map[uint]*models.Answer{},
 	}
 }
 
@@ -80,12 +65,11 @@ func (c *Client) ReadPump() {
 		_, rawMessage, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Error().Stack().Err(err).Msg("error")
+				log.Error().Stack().Err(err).Msg("websocket close error")
 			}
 			break
 		}
 		rawMessage = bytes.TrimSpace(bytes.Replace(rawMessage, newline, space, -1))
-		log.Info().Msg("new rawMessage: " + string(rawMessage))
 
 		// parse message byte to json
 		var messageObj dto.MessageTransfer
@@ -95,21 +79,8 @@ func (c *Client) ReadPump() {
 			continue
 		}
 
-		if !dto.VerifyMessageType(messageObj.Type) {
-			log.Error().Any("messageObj.Type", messageObj.Type).Msg("Error message type")
-			continue
-		}
-
-		log.Info().Interface("messageObj", messageObj).Msg("messageObj")
-		if messageObj.Type == dto.SendMessage {
-			log.Info().Interface("messageObj", messageObj).Msg("messageObj")
-			// message := models.NewMessage(messageObj.Data)
-			// NOTE:save message to database
-
-			c.GameSocket.Send <- messageObj
-		} else {
-			log.Info().Interface("messageObj.Others", messageObj).Msg("messageObj.Others")
-		}
+		log.Info().Interface("Comming message", messageObj).Msg("messageObj")
+		router(c, &messageObj)
 	}
 }
 
@@ -131,11 +102,10 @@ func (c *Client) WritePump() {
 			if !ok {
 				// The hub closed the channel.
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
-				log.Error().Msg("The hub closed the channel")
+				log.Error().Msgf("The hub closed the channel of client: %s", c.User.Username)
 				return
 			}
-
-			message.Type = dto.NewMessage
+			log.Info().Interface("WRITE message: ", message).Msg("message")
 			err := c.Conn.WriteJSON(message)
 			if err != nil {
 				log.Error().Stack().Err(err).Msg("error")
@@ -145,7 +115,7 @@ func (c *Client) WritePump() {
 			// Add queued chat messages to the current websocket message.
 			for i := 0; i < len(c.Send); i++ {
 				queueMessage := <-c.Send
-				c.Conn.WriteJSON(dto.NewMessageTransfer(dto.NewMessage, queueMessage, nil))
+				c.Conn.WriteJSON(queueMessage)
 			}
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
@@ -157,7 +127,13 @@ func (c *Client) WritePump() {
 }
 
 func (c *Client) CleanUp() {
-	log.Info().Msg("Client quit game")
+	log.Info().Msgf("CleanUp client: %s", c.User.Username)
 	close(c.Send)
 	c.Conn.Close()
+	c.ConnectionCtx.Cancel()
+}
+
+func (c *Client) Notify(message dto.MessageTransfer) {
+	log.Info().Interface("message zxczx", message).Msg("message")
+	c.Send <- message
 }

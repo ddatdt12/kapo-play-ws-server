@@ -20,15 +20,36 @@ import (
 func InitHttpProtocol() *http.HttpImpl {
 	redisImpl := db.NewRedisClient()
 	gameRepository := repositories.NewGameRepository(redisImpl)
-	gameService := services.NewGameService(gameRepository)
-	userRepository := repositories.NewUserRepository(redisImpl)
+	gameService := services.NewGameService(gameRepository, redisImpl)
+	userRepository := repositories.NewUserRepository()
 	userService := services.NewUserService(userRepository, gameRepository)
-	hub := ws.NewHub(gameService, userService)
+	questionRepository := repositories.NewQuestionRepository()
+	leaderboardService := services.NewLeaderboardService(redisImpl)
+	questionService := services.NewQuestionService(questionRepository, userService, leaderboardService)
+	hub := ws.NewHub(gameService, userService, questionService, leaderboardService)
 	httpImpl := http.NewHttpProtocol(hub)
 	return httpImpl
 }
 
 // wire.go:
+
+var questionRepo = wire.NewSet(repositories.NewQuestionRepository, wire.Bind(
+	new(repositories.IQuestionRepository),
+	new(*repositories.QuestionRepository),
+),
+)
+
+var questionSvc = wire.NewSet(services.NewQuestionService, wire.Bind(
+	new(services.IQuestionService),
+	new(*services.QuestionService),
+),
+)
+
+var leaderboardSvc = wire.NewSet(services.NewLeaderboardService, wire.Bind(
+	new(services.ILeaderboardService),
+	new(*services.LeaderboardService),
+),
+)
 
 var gameRepo = wire.NewSet(repositories.NewGameRepository, wire.Bind(
 	new(repositories.IGameRepository),

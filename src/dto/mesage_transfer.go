@@ -1,19 +1,40 @@
 package dto
 
 import (
+	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog/log"
 )
 
 type MessageType string
 
+// for both
+
 const (
-	// MessageTransferTypeSendMessage is the type of message transfer
-	SendMessage    MessageType = "send_message"
-	NewMessage     MessageType = "new_message"
-	StartGame      MessageType = "start_game"
-	SkipGame       MessageType = "skip_game"
-	NextQuestion   MessageType = "next_question"
-	AnswerQuestion MessageType = "answer_question"
+	MessageFirstJoin      MessageType = "first_join"
+	MessagePlayerList     MessageType = "player_list"
+	MessageNewQuestion    MessageType = "new_question"
+	MessageQuestionResult MessageType = "question_result"
+	MessageEndGame        MessageType = "end_game"
+)
+
+// For player
+const (
+	MessageAnswerQuestion MessageType = "player/answer_question"
+)
+
+// For Host
+const (
+	MessageStartGame    MessageType = "host/start_game"
+	MessageTimeUp       MessageType = "host/time_up"
+	MessageSkipQuestion MessageType = "host/skip_game"
+	MessageNextAction   MessageType = "host/next_action"
+	MessageNextQuestion MessageType = "host/next_question"
+	MessageLeaderboard  MessageType = "host/get_leaderboard"
+)
+
+// Error
+const (
+	Error MessageType = "error"
 )
 
 type MessageTransfer struct {
@@ -30,12 +51,25 @@ func NewMessageTransfer(messageType MessageType, data interface{}, meta interfac
 	}
 }
 
-func VerifyMessageType(messageType MessageType) bool {
-	switch messageType {
-	case SendMessage, NewMessage:
+func (message *MessageTransfer) IsValid() bool {
+	switch message.Type {
+	case MessageFirstJoin,
+		MessagePlayerList,
+		MessageAnswerQuestion,
+		MessageStartGame,
+		MessageSkipQuestion,
+		MessageNextQuestion,
+		MessageLeaderboard,
+		MessageTimeUp,
+		MessageNextAction,
+		MessageNewQuestion, MessageQuestionResult:
 		return true
 	default:
-		log.Info().Interface("invalid messageType", messageType).Msg("messageStruct")
+		log.Info().Interface("invalid messageType", message.Type).Msg("messageStruct")
 		return false
 	}
+}
+
+func (m *MessageTransfer) Binding(result any) error {
+	return mapstructure.Decode(m.Data, result)
 }

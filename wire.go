@@ -12,6 +12,30 @@ import (
 	"github.com/google/wire"
 )
 
+var questionRepo = wire.NewSet(
+	repositories.NewQuestionRepository,
+	wire.Bind(
+		new(repositories.IQuestionRepository),
+		new(*repositories.QuestionRepository),
+	),
+)
+
+var questionSvc = wire.NewSet(
+	services.NewQuestionService,
+	wire.Bind(
+		new(services.IQuestionService),
+		new(*services.QuestionService),
+	),
+)
+
+var leaderboardSvc = wire.NewSet(
+	services.NewLeaderboardService,
+	wire.Bind(
+		new(services.ILeaderboardService),
+		new(*services.LeaderboardService),
+	),
+)
+
 var gameRepo = wire.NewSet(
 	repositories.NewGameRepository,
 	wire.Bind(
@@ -46,13 +70,16 @@ var userSvc = wire.NewSet(
 
 func InitHttpProtocol() *http.HttpImpl {
 	wire.Build(
-		db.NewRedisClient,
 		http.NewHttpProtocol,
+		db.NewRedisClient,
 		ws.NewHub,
+		leaderboardSvc,
 		gameSvc,
 		userSvc,
+		questionSvc,
 		gameRepo,
 		userRepo,
+		questionRepo,
 	)
 
 	return &http.HttpImpl{}

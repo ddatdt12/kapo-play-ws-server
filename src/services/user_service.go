@@ -20,13 +20,13 @@ type IUserService interface {
 }
 
 type UserService struct {
-	userRepo *repositories.UserRepository
-	gameRepo *repositories.GameRepository
+	userRepo repositories.IUserRepository
+	gameRepo repositories.IGameRepository
 }
 
 func NewUserService(
-	userRepo *repositories.UserRepository,
-	gameRepo *repositories.GameRepository,
+	userRepo repositories.IUserRepository,
+	gameRepo repositories.IGameRepository,
 ) *UserService {
 	return &UserService{
 		userRepo: userRepo,

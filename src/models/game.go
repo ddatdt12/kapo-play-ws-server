@@ -9,6 +9,7 @@ import (
 
 type GameType string
 type GameStatus string
+type GameStage string
 
 const (
 	GameTypeQuizGame    GameType = "quiz_game"
@@ -21,24 +22,31 @@ const (
 	GameStatusEnded   GameStatus = "ended"
 )
 
+var (
+	GameStageShowQuestion GameStage = "stage/show_question"
+	GameStageShowAnswer   GameStage = "stage/show_answer"
+)
+
 type Game struct {
-	ID         uint
-	Code       string
-	Name       string
-	Status     GameStatus
-	StartTime  types.NullTime
-	EndTime    types.NullTime
-	TemplateID uint
-	Template   Template
-	Type       GameType
-	HostID     uint
-	Settings   GameSettings
-	CreatedAt  time.Time
+	ID             uint               `json:"id"`
+	Code           string             `json:"code"`
+	Name           string             `json:"name"`
+	Status         GameStatus         `json:"status"`
+	StartTime      types.NullableTime `json:"startTime"`
+	EndTime        types.NullableTime `json:"endTime"`
+	TemplateID     uint               `json:"templateId"`
+	Template       Template           `json:"template"`
+	Type           GameType           `json:"type"`
+	HostID         uint               `json:"hostId"`
+	Host           User               `json:"host"`
+	Settings       GameSettings       `json:"settings"`
+	TotalQuestions int64              `json:"totalQuestions"`
+	CreatedAt      time.Time          `json:"createdAt"`
 }
 
 type GameSettings struct {
-	RandomizeQuestions bool `json:"randomize_questions"`
-	RandomizeAnswers   bool `json:"randomize_answers"`
+	RandomizeQuestions bool `json:"randomizeQuestions"`
+	RandomizeAnswers   bool `json:"randomizeAnswers"`
 }
 
 func (s GameType) IsValid() bool {

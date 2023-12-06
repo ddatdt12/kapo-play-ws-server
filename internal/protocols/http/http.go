@@ -23,8 +23,11 @@ func NewHttpProtocol(wsHub *ws.Hub) *HttpImpl {
 
 func (p *HttpImpl) setupRouter() {
 	http.HandleFunc("/", serveHome)
+	http.HandleFunc("/ws/host", func(w http.ResponseWriter, r *http.Request) {
+		p.wsHub.ServeHostWs(w, r)
+	})
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		p.wsHub.ServeWs(w, r)
+		p.wsHub.ServeClientWs(w, r)
 	})
 }
 

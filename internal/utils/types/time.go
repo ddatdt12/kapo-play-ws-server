@@ -1,17 +1,17 @@
 package types
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
 )
 
-type NullTime struct {
-	sql.NullTime
+type NullableTime struct {
+	Time  time.Time
+	Valid bool 
 }
 
-func (ni NullTime) MarshalJSON() ([]byte, error) {
+func (ni NullableTime) MarshalJSON() ([]byte, error) {
 	if !ni.Valid {
 		return []byte("null"), nil
 	}
@@ -19,17 +19,15 @@ func (ni NullTime) MarshalJSON() ([]byte, error) {
 	return []byte(val), nil
 }
 
-func (ni NullTime) UnmarshalJSON(b []byte) error {
+func (ni NullableTime) UnmarshalJSON(b []byte) error {
 	err := json.Unmarshal(b, &ni.Time)
 	ni.Valid = (err == nil)
 	return err
 }
 
-func NewNullTime(t time.Time) NullTime {
-	return NullTime{
-		NullTime: sql.NullTime{
-			Time:  t,
-			Valid: true,
-		},
+func NewNullableTime(t time.Time) NullableTime {
+	return NullableTime{
+		Time:  t,
+		Valid: true,
 	}
 }
