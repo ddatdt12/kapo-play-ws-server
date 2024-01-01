@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -33,7 +34,6 @@ func (p *HttpImpl) setupRouter() {
 }
 
 func serveHome(w http.ResponseWriter, r *http.Request) {
-	log.Info().Msg("serveHome")
 	if r.URL.Path != "/" {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
@@ -42,7 +42,8 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	http.ServeFile(w, r, "home.html")
+	fmt.Printf("got /hello request\n")
+	io.WriteString(w, "Hello HOME KAPO")
 }
 
 func (p *HttpImpl) Listen() {
