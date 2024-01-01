@@ -2,21 +2,22 @@ package services
 
 import (
 	"context"
-	"errors"
 
-	"github.com/ddatdt12/kapo-play-ws-server/src/dto"
+	"github.com/pkg/errors"
+
 	"github.com/ddatdt12/kapo-play-ws-server/src/models"
 	"github.com/ddatdt12/kapo-play-ws-server/src/repositories"
 )
 
 var (
-	ErrUserNotFound  = errors.New("game not found")
+	ErrUserNotFound  = errors.New("user not found")
 	ErrUsernameExist = errors.New("username exist")
 )
 
 type IUserService interface {
 	UsernameExist(ctx context.Context, code string, username string) (bool, error)
-	JoinGame(ctx context.Context, code string, user dto.UserDto) (*models.User, error)
+	JoinGame(ctx context.Context, code string, user *models.User) error
+	QuitGame(ctx context.Context, code string, username string) error
 }
 
 type UserService struct {
@@ -38,30 +39,40 @@ func (s *UserService) UsernameExist(ctx context.Context, code string, username s
 	return s.userRepo.UsernameExist(ctx, code, username)
 }
 
-func (s *UserService) JoinGame(ctx context.Context, code string, userDto dto.UserDto) (*models.User, error) {
+func (s *UserService) JoinGame(ctx context.Context, code string, userDto *models.User) error {
 	_, err := s.gameRepo.GetByCode(ctx, code)
 
 	if err != nil {
-		return nil, err
+		return errors.Wrap(err, "join game")
 	}
 
 	exist, err := s.userRepo.UsernameExist(ctx, code, userDto.Username)
 
 	if err != nil {
-		return nil, err
+		return errors.Wrap(err, "join game")
 	} else if exist {
-		return nil, ErrUsernameExist
+		return ErrUsernameExist
 	}
 
 	user := models.User{
 		Username: userDto.Username,
 	}
 
-	_, err = s.userRepo.AddUser(ctx, code, user)
+	err = s.userRepo.Add(ctx, code, &user)
 
 	if err != nil {
-		return nil, err
+		return errors.Wrap(err, "join game")
 	}
 
-	return &user, nil
+	return nil
+}
+
+func (s *UserService) QuitGame(ctx context.Context, code string, username string) error {
+	err := s.userRepo.Remove(ctx, code, username)
+
+	if err != nil {
+		return errors.Wrap(err, "quit game")
+	}
+
+	return nil
 }

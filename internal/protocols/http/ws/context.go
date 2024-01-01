@@ -3,10 +3,8 @@ package ws
 import "context"
 
 type ConnectionContext struct {
-	Ctx          context.Context
-	Cancel       context.CancelFunc
-	UserCanceled bool      // approach one
-	ID           string    // approach two
+	Ctx    context.Context
+	Cancel context.CancelFunc
 }
 
 func NewConnectionContext() *ConnectionContext {

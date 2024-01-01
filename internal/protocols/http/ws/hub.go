@@ -6,8 +6,11 @@ package ws
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"time"
 
+	"github.com/ddatdt12/kapo-play-ws-server/infras/db"
 	"github.com/ddatdt12/kapo-play-ws-server/src/dto"
 	"github.com/ddatdt12/kapo-play-ws-server/src/models"
 	"github.com/ddatdt12/kapo-play-ws-server/src/services"
@@ -79,8 +82,35 @@ func (h *Hub) Run() {
 		case client := <-h.Register:
 			gameSocket, ok := h.GameSocketMap[client.Game.Code]
 			if !ok {
-				gameSocket = NewGameSocket(client.Game)
+				gameState, err := h.GameService.GetGameState(client.ConnectionCtx.Ctx, client.Game.Code)
+
+				log.Info().Interface("Check gameState exist in register: ", gameState).Msg("gameState")
+				if err != nil && !errors.Is(err, db.ErrNotFound) {
+					log.Error().Err(err).Msg("Error when joining game")
+					client.Send <- dto.MessageTransfer{
+						Type: dto.Error,
+						Data: err.Error(),
+					}
+					return
+				}
+				if gameState == nil {
+					gameState = models.NewGameState()
+				}
+				gameState.OnGameStateChanged = func(gameState *models.GameState) {
+					log.Info().Interface("OnGameStateChanged", gameState).Msg("gameState")
+					h.GameService.UpdateGameState(client.ConnectionCtx.Ctx, client.Game.Code, gameState)
+				}
+				gameState.OnGameStatusChanged = func(newStatus models.GameStatus, oldStatus models.GameStatus, gameState *models.GameState) {
+					log.Info().Interface("OnGameStatusChanged", gameState).Msg("gameState")
+					if newStatus == models.GameStatusEnded {
+						h.GameService.EndGame(client.ConnectionCtx.Ctx, client.Game.Code)
+					} else if newStatus == models.GameStatusPlaying {
+						h.GameService.StartGame(client.ConnectionCtx.Ctx, client.Game.Code)
+					}
+				}
+				gameSocket = NewGameSocket(client.Game, gameState)
 				h.GameSocketMap[client.Game.Code] = gameSocket
+
 				go gameSocket.Run()
 			}
 			log.Info().Interface("GameSocket.Info", gameSocket.Info).Msg("GameSocket.Info")
@@ -90,21 +120,35 @@ func (h *Hub) Run() {
 				gameSocket.SetHost(client)
 			} else {
 				gameSocket.ClientSet[client] = true
+				// err := h.UserService.JoinGame(client.ConnectionCtx.Ctx, client.Game.Code, client.User)
+				// if err != nil {
+				// 	log.Error().Err(err).Msg("Error when joining game")
+				// 	client.Send <- dto.MessageTransfer{
+				// 		Type: dto.Error,
+				// 		Data: err.Error(),
+				// 	}
+				// 	return
+				// }
 			}
-			// h.UserService.JoinGame(client.Ctx, client.Game.Code, client.User)
+
+			client.FinishRegister()
 		case client := <-h.Unregister:
 			// h.UserService.QuitGame(client.Ctx, client.Game.Code, client.User)
 			if gameSocket, ok := h.GameSocketMap[client.Game.Code]; ok {
 				if _, ok := gameSocket.ClientSet[client]; ok {
 					gameSocket.RemoveClient(client)
 					gameSocket.NotifyUpdatedListPlayers()
-				}
-				if client.IsHost {
-					gameSocket.Cancel()
-					delete(h.GameSocketMap, client.Game.Code)
+					if client.IsHost {
+						gameSocket.Cancel()
+						delete(h.GameSocketMap, client.Game.Code)
+					} else {
+						// h.UserService.QuitGame(client.ConnectionCtx.Ctx, client.Game.Code, client.User.Username)
+					}
 				}
 			}
 		case message := <-h.Messages:
+			// TODO: remove
+			return
 			messagesStore = append(messagesStore, message)
 			log.Info().Interface("messagesStore", messagesStore).Msg("messagesStore")
 
@@ -166,16 +210,18 @@ func (hub *Hub) ServeClientWs(w http.ResponseWriter, r *http.Request) {
 
 	user := models.User{
 		Username: username,
+		Avatar:   "https://picsum.photos/200",
+		JoinedAt: time.Now(),
 	}
 	client := NewClient(hub, conn, nil, game, &user)
 	log.Info().Interface("new client connected", map[string]any{
 		"Game": client.Game,
 		"User": client.User,
 	}).Msg("client connected")
-	hub.Register <- client
+	client.Register()
+	client.WaitRegister()
 
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
+	log.Info().Msgf("Client %s is next step", client.User.Username)
 	go client.WritePump()
 	go client.ReadPump()
 }
@@ -217,15 +263,16 @@ func (hub *Hub) ServeHostWs(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
 	user := game.Host
 	client := NewClient(hub, conn, nil, game, &user)
+	client.User = &user
 	client.IsHost = true
 	log.Info().Interface("client", map[string]any{
 		"Game": client.Game,
 		"User": client.User,
 	}).Msg("client connected")
-	client.Hub.Register <- client
+	client.Register()
+	client.WaitRegister()
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.

@@ -2,10 +2,11 @@ package http
 
 import (
 	"context"
-	"flag"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/ddatdt12/kapo-play-ws-server/configs"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http/ws"
 	"github.com/rs/zerolog/log"
 )
@@ -45,14 +46,14 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *HttpImpl) Listen() {
-	var addr = flag.String("addr", ":8080", "http service address")
-	log.Info().Msgf("Server started on Port %s ", *addr)
+	addr := fmt.Sprintf(":%v", configs.EnvConfigs.SERVER_PORT)
+	log.Info().Msgf("Server started on Port %s ", addr)
 
 	go p.wsHub.Run()
 	p.setupRouter()
 
 	p.httpServer = &http.Server{
-		Addr:              *addr,
+		Addr:              addr,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	err := p.httpServer.ListenAndServe()

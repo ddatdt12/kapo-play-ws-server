@@ -14,14 +14,14 @@ type QuestionRes struct {
 	LimitTime uint                `json:"limitTime"`
 	Points    uint                `json:"points"`
 	Choices   []QuestionChoiceRes `json:"choices"`
-	StartAt   time.Time           `json:"startAt"`
-	EndAt     time.Time           `json:"endAt"`
+	StartedAt time.Time           `json:"startedAt"`
+	EndedAt   time.Time           `json:"endedAt"`
 }
 
 type QuestionResult struct {
 	Question          *QuestionRes              `json:"question"`
-	Answer            *models.Answer            `json:"answer"`
-	QuestionStatistic *models.QuestionStatistic `json:"questionStatistic"`
+	Answer            *models.Answer            `json:"answer"`            // Answer of user
+	QuestionStatistic *models.QuestionStatistic `json:"questionStatistic"` // Statistic of question for host
 }
 
 type QuestionChoiceRes struct {
@@ -46,8 +46,8 @@ func NewQuestionRes(question *models.Question) *QuestionRes {
 		LimitTime: question.LimitTime,
 		Points:    question.Points,
 		Choices:   choices,
-		StartAt:   question.StartAt.Time,
-		EndAt:     question.StartAt.Time.Add(5 * time.Second),
+		StartedAt: *question.StartedAt,
+		EndedAt:   question.StartedAt.Add(time.Duration(question.LimitTime) * time.Second),
 	}
 }
 
@@ -69,8 +69,8 @@ func NewQuestionResult(question *models.Question, anwser *models.Answer, statist
 			LimitTime: question.LimitTime,
 			Points:    question.Points,
 			Choices:   choices,
-			StartAt:   question.StartAt.Time,
-			EndAt:     question.StartAt.Time.Add(time.Duration(question.LimitTime) * time.Second),
+			StartedAt: *question.StartedAt,
+			EndedAt:   question.StartedAt.Add(time.Duration(question.LimitTime) * time.Second),
 		},
 		Answer:            anwser,
 		QuestionStatistic: statistic,
@@ -79,8 +79,9 @@ func NewQuestionResult(question *models.Question, anwser *models.Answer, statist
 }
 
 type AnswerQuestionReq struct {
-	QuestionOffset uint  `json:"question_offset"`
-	Answers        []any `json:"answers"`
+	QuestionOffset uint      `json:"questionOffset"`
+	Answers        []any     `json:"answers"`
+	AnsweredAt     time.Time `json:"answeredAt"`
 }
 
 func (m *QuestionRes) MarshalBinary() (data []byte, err error) {

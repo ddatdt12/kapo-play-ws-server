@@ -7,16 +7,17 @@ import (
 	"github.com/ddatdt12/kapo-play-ws-server/src/models"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 var (
-	ErrLeaderboardNotFound = errors.New("game not found")
+	ErrLeaderboardNotFound = errors.New("leaderboard not found")
 )
 
 type ILeaderboardService interface {
-	GetLeaderboard(ctx context.Context, gameID uint) (*models.Leaderboard, error)
-	GetUserRank(ctx context.Context, gameID uint, username string) (*models.LeaderboardUser, error)
-	IncrementPointsLeaderboard(ctx context.Context, gameID uint, username string, points uint) error
+	GetLeaderboard(ctx context.Context, gameCode string) (*models.Leaderboard, error)
+	GetUserRank(ctx context.Context, gameCode string, username string) (*models.LeaderboardUser, error)
+	IncrementPointsLeaderboard(ctx context.Context, gameCode string, username string, points uint) error
 }
 
 type LeaderboardService struct {
@@ -31,68 +32,47 @@ func NewLeaderboardService(
 	}
 }
 
-func (s *LeaderboardService) GetLeaderboard(ctx context.Context, gameID uint) (*models.Leaderboard, error) {
-	// zResult, err := s.redis.DB().ZRangeWithScores(ctx, buildLeaderboardKey(gameID), 0, -1).Result()
+func (s *LeaderboardService) GetLeaderboard(ctx context.Context, gameCode string) (*models.Leaderboard, error) {
+	zResult, err := s.redis.DB().ZRevRangeWithScores(ctx, buildLeaderboardKey(gameCode), 0, -1).Result()
 
-	// if err != nil {
-	// 	return nil, errors.Wrap(err, "get game")
-	// }
+	if err != nil {
+		return nil, errors.Wrap(err, "get game")
+	}
 
-	// leaderboardItems := buildLeaderboardUsers(zResult)
-	// leaderboard := &models.Leaderboard{
-	// 	ID:     gameID,
-	// 	GameID: gameID,
-	// 	Items:  leaderboardItems,
-	// }
-
+	leaderboardItems := buildLeaderboardUsers(zResult)
 	leaderboard := &models.Leaderboard{
-		GameID: gameID,
-		Items: []*models.LeaderboardUser{
-			{
-				User: models.User{
-					Username: "dat",
-				},
-				Username: "dat",
-				Points:   100,
-				Rank:     1,
-			},
-			{
-				User: models.User{
-					Username: "dat2",
-				},
-				Username: "dat2",
-				Points:   60,
-				Rank:     2,
-			},
-			{
-				User: models.User{
-					Username: "dat23",
-				},
-				Username: "dat23",
-				Points:   40,
-				Rank:     3,
-			},
-		},
+		GameCode: gameCode,
+		Items:    leaderboardItems,
 	}
 
 	return leaderboard, nil
 }
 
-func (s *LeaderboardService) GetUserRank(ctx context.Context, gameID uint, username string) (*models.LeaderboardUser, error) {
+func (s *LeaderboardService) GetUserRank(ctx context.Context, gameCode string, username string) (*models.LeaderboardUser, error) {
+	zResult, err := s.redis.DB().ZRevRankWithScore(ctx, buildLeaderboardKey(gameCode), username).Result()
 	userRank := models.LeaderboardUser{
 		User: models.User{
-			Username: "dat23",
+			Username: username,
 		},
-		Username: "dat23",
-		Points:   40,
-		Rank:     3,
+		Username: username,
+		Points:   0,
+		Rank:     0,
 	}
+	if err != nil {
+		if err == redis.Nil {
+			return &userRank, nil
+		}
+		return nil, errors.Wrap(err, "get user rank")
+	}
+
+	userRank.Points = uint(zResult.Score)
+	userRank.Rank = uint(zResult.Rank + 1)
 
 	return &userRank, nil
 }
 
-func (s *LeaderboardService) IncrementPointsLeaderboard(ctx context.Context, gameID uint, username string, points uint) error {
-	err := s.redis.DB().ZIncrBy(ctx, buildLeaderboardKey(gameID), float64(points), username).Err()
+func (s *LeaderboardService) IncrementPointsLeaderboard(ctx context.Context, gameCode string, username string, points uint) error {
+	err := s.redis.DB().ZIncrBy(ctx, buildLeaderboardKey(gameCode), float64(points), username).Err()
 
 	if err != nil {
 		return errors.Wrap(err, "increment points leaderboard")
@@ -101,17 +81,22 @@ func (s *LeaderboardService) IncrementPointsLeaderboard(ctx context.Context, gam
 	return nil
 }
 
-func buildLeaderboardKey(gameID uint) string {
-	return "leaderboard:" + string(gameID)
+func buildLeaderboardKey(gameCode string) string {
+	return "game:" + gameCode + ":leaderboard"
 }
 
 func buildLeaderboardUsers(zResult []redis.Z) []*models.LeaderboardUser {
+	log.Info().Interface("zResult", zResult).Msg("buildLeaderboardUsers")
 	items := make([]*models.LeaderboardUser, len(zResult))
-	for _, z := range zResult {
-		items = append(items, &models.LeaderboardUser{
+	for i, z := range zResult {
+		if z.Member == nil {
+			continue
+		}
+		items[i] = &models.LeaderboardUser{
 			Username: z.Member.(string),
 			Points:   uint(z.Score),
-		})
+			Rank:     uint(i + 1),
+		}
 	}
 	return items
 }

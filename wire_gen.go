@@ -7,6 +7,8 @@
 package main
 
 import (
+	"github.com/ddatdt12/kapo-play-ws-server/clients/answer"
+	"github.com/ddatdt12/kapo-play-ws-server/clients/game"
 	"github.com/ddatdt12/kapo-play-ws-server/infras/db"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http/ws"
@@ -20,12 +22,15 @@ import (
 func InitHttpProtocol() *http.HttpImpl {
 	redisImpl := db.NewRedisClient()
 	gameRepository := repositories.NewGameRepository(redisImpl)
-	gameService := services.NewGameService(gameRepository, redisImpl)
-	userRepository := repositories.NewUserRepository()
+	gameGameClient := game.NewGameClient()
+	gameService := services.NewGameService(gameRepository, redisImpl, gameGameClient)
+	userRepository := repositories.NewUserRepository(redisImpl)
 	userService := services.NewUserService(userRepository, gameRepository)
-	questionRepository := repositories.NewQuestionRepository()
+	questionRepository := repositories.NewQuestionRepository(redisImpl)
 	leaderboardService := services.NewLeaderboardService(redisImpl)
-	questionService := services.NewQuestionService(questionRepository, userService, leaderboardService)
+	answerAnswerClient := answer.NewAnswerClient()
+	answerService := services.NewAnswerService(redisImpl, leaderboardService, answerAnswerClient)
+	questionService := services.NewQuestionService(questionRepository, gameService, userService, leaderboardService, answerService)
 	hub := ws.NewHub(gameService, userService, questionService, leaderboardService)
 	httpImpl := http.NewHttpProtocol(hub)
 	return httpImpl
@@ -72,5 +77,23 @@ var userRepo = wire.NewSet(repositories.NewUserRepository, wire.Bind(
 var userSvc = wire.NewSet(services.NewUserService, wire.Bind(
 	new(services.IUserService),
 	new(*services.UserService),
+),
+)
+
+var answerSvc = wire.NewSet(services.NewAnswerService, wire.Bind(
+	new(services.IAnswerService),
+	new(*services.AnswerService),
+),
+)
+
+var answerClient = wire.NewSet(answer.NewAnswerClient, wire.Bind(
+	new(answer.IAnswerClient),
+	new(*answer.AnswerClient),
+),
+)
+
+var gameClient = wire.NewSet(game.NewGameClient, wire.Bind(
+	new(game.IGameClient),
+	new(*game.GameClient),
 ),
 )

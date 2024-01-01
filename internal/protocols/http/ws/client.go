@@ -7,6 +7,7 @@ package ws
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/ddatdt12/kapo-play-ws-server/src/dto"
@@ -34,6 +35,9 @@ type Client struct {
 
 	//Information related to game
 	QuestionAnswersMap map[uint]*models.Answer
+
+	//ready
+	IsReady chan bool
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, gameSocket *GameSocket, game *models.Game, user *models.User) *Client {
@@ -49,6 +53,31 @@ func NewClient(hub *Hub, conn *websocket.Conn, gameSocket *GameSocket, game *mod
 	}
 }
 
+func (c *Client) WaitRegister() {
+	for {
+		select {
+		case <-c.ConnectionCtx.Ctx.Done():
+			log.Info().Msgf("Client %s is done", c.User.Username)
+			return
+		case <-c.IsReady:
+			log.Info().Msgf("Client %s is ready", c.User.Username)
+			return
+		case <-time.After(10 * time.Second):
+			log.Error().Msgf("Client %s is timeout", c.User.Username)
+			return
+		}
+	}
+}
+
+func (c *Client) Register() {
+	c.IsReady = make(chan bool)
+	c.Hub.Register <- c
+}
+
+func (c *Client) FinishRegister() {
+	close(c.IsReady)
+}
+
 // readPump pumps messages from the websocket connection to the hub.
 //
 // The application runs readPump in a per-connection goroutine. The application
@@ -56,6 +85,7 @@ func NewClient(hub *Hub, conn *websocket.Conn, gameSocket *GameSocket, game *mod
 // reads from this goroutine.
 func (c *Client) ReadPump() {
 	defer func() {
+		log.Debug().Interface("client", c.User).Msg("defer close client")
 		c.Hub.Unregister <- c
 	}()
 	c.Conn.SetReadLimit(maxMessageSize)
@@ -79,7 +109,10 @@ func (c *Client) ReadPump() {
 			continue
 		}
 
-		log.Info().Interface("Comming message", messageObj).Msg("messageObj")
+		log.Info().
+			Interface(fmt.
+				Sprintf("READ message TO: %s - ishost = %v", c.User.Username, c.IsHost), messageObj).Msg("message")
+
 		router(c, &messageObj)
 	}
 }
@@ -105,7 +138,9 @@ func (c *Client) WritePump() {
 				log.Error().Msgf("The hub closed the channel of client: %s", c.User.Username)
 				return
 			}
-			log.Info().Interface("WRITE message: ", message).Msg("message")
+			log.Info().
+				Interface(fmt.
+					Sprintf("WRITE message FROM: %s - ishost = %v", c.User.Username, c.IsHost), message).Msg("message")
 			err := c.Conn.WriteJSON(message)
 			if err != nil {
 				log.Error().Stack().Err(err).Msg("error")

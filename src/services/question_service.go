@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ddatdt12/kapo-play-ws-server/infras/db"
@@ -16,35 +17,39 @@ var (
 	ErrQuestionNotFound = errors.New("question not found")
 )
 
-var UserAnwsersMap = make(map[uint]*[]models.Answer, 0)
-var QuestionAnswersMap = make(map[uint]*[]models.Answer, 0)
-
 type IQuestionService interface {
-	GetQuestion(ctx context.Context, gameID uint, questionOffset int64) (*models.Question, error)
-	AnwserQuestion(ctx context.Context, gameID uint, user *models.User, answerDto dto.AnswerQuestionReq) (*models.Answer, error)
-	StatisticAnswersOfQuestion(ctx context.Context, gameID uint, questionID uint) (*models.QuestionStatistic, error)
+	GetQuestion(ctx context.Context, gameCode string, questionOffset uint) (*models.Question, error)
+	AnwserQuestion(ctx context.Context, gameCode string, user *models.User, answerDto dto.AnswerQuestionReq) (*models.Answer, error)
+	StatisticAnswersOfQuestion(ctx context.Context, gameCode string, questionOffset uint) (*models.QuestionStatistic, error)
+	Update(ctx context.Context, gameCode string, question *models.Question) error
 }
 
 type QuestionService struct {
-	userService  IUserService
-	questionRepo repositories.IQuestionRepository
-	leaderboard  ILeaderboardService
+	userService   IUserService
+	questionRepo  repositories.IQuestionRepository
+	leaderboard   ILeaderboardService
+	answerService IAnswerService
+	gameService   IGameService
 }
 
 func NewQuestionService(
 	questionRepo repositories.IQuestionRepository,
+	gameService IGameService,
 	userService IUserService,
 	leaderboard ILeaderboardService,
+	answerService IAnswerService,
 ) *QuestionService {
 	return &QuestionService{
-		questionRepo: questionRepo,
-		userService:  userService,
-		leaderboard:  leaderboard,
+		gameService:   gameService,
+		questionRepo:  questionRepo,
+		userService:   userService,
+		leaderboard:   leaderboard,
+		answerService: answerService,
 	}
 }
 
-func (s *QuestionService) GetQuestion(ctx context.Context, gameID uint, questionOffset int64) (*models.Question, error) {
-	question, err := s.questionRepo.GetByOffset(ctx, gameID, questionOffset)
+func (s *QuestionService) GetQuestion(ctx context.Context, gameCode string, questionOffset uint) (*models.Question, error) {
+	question, err := s.questionRepo.GetByOffset(ctx, gameCode, questionOffset)
 
 	if err != nil {
 		if err == db.ErrNotFound {
@@ -56,35 +61,76 @@ func (s *QuestionService) GetQuestion(ctx context.Context, gameID uint, question
 	return question, nil
 }
 
+func (s *QuestionService) Update(ctx context.Context, gameCode string, question *models.Question) error {
+	question.Game = &models.Game{
+		Code: gameCode,
+	}
+	err := s.questionRepo.Update(ctx, question)
+	if err != nil {
+		return errors.Wrap(err, "Update")
+	}
+
+	return nil
+}
+
 func (s *QuestionService) AnwserQuestion(
 	ctx context.Context,
-	gameID uint,
+	gameCode string,
 	user *models.User,
 	answerDto dto.AnswerQuestionReq) (*models.Answer, error) {
-	question, err := s.questionRepo.GetByOffset(ctx, gameID, int64(answerDto.QuestionOffset))
-	anwserAt := time.Now()
+	game, err := s.gameService.GetGame(ctx, gameCode)
+	if err != nil {
+		return nil, err
+	}
+
+	question, err := s.questionRepo.GetByOffset(ctx, gameCode, answerDto.QuestionOffset)
 	if err != nil {
 		if err == db.ErrNotFound {
 			return nil, ErrQuestionNotFound
 		}
 		return nil, err
 	}
+	answeredAt := time.Now()
+	log.Info().Interface("answeredAt", answeredAt).Msg("AnwserQuestion")
+	log.Info().Interface("question.startedAt", question.StartedAt).Msg("AnwserQuestion")
+	// isTimeOut := answerDto.AnsweredAt.After(question.GetEndedTime())
+
+	// log.Info().Interface("isTimeOut", isTimeOut).Msg("isTimeOut")
+
+	if question.StartedAt == nil {
+		startedAt := answeredAt.Add(-time.Duration(question.LimitTime) * time.Second)
+		question.StartedAt = &startedAt
+	}
 
 	isCorrect := question.VerifyAnswers(answerDto.Answers)
-	var answerTime time.Duration = anwserAt.Sub(question.StartAt.Time)
+	var answerTime time.Duration = answeredAt.Sub(*question.StartedAt)
 	answer := models.Answer{
-		Choices:    answerDto.Answers,
+		Values:     answerDto.Answers,
 		QuestionID: question.ID,
-		AnswerTime: answerTime.Milliseconds(),
+		AnswerTime: answerTime.Seconds(),
 		IsCorrect:  isCorrect,
-		Point:      calculateScore(answerTime.Milliseconds(), question),
+		Points:     calculateScore(answerTime.Milliseconds(), question),
+		User:       user,
+		GameID:     game.ID,
+		Username:   user.Username,
+		AnsweredAt: answeredAt,
 	}
-	storeAnswer(gameID, user, answer)
+
 	if isCorrect {
-		err = s.leaderboard.IncrementPointsLeaderboard(ctx, gameID, user.Username, 100)
+		err = s.leaderboard.IncrementPointsLeaderboard(ctx, gameCode, user.Username, uint(answer.Points))
 		if err != nil {
 			return nil, errors.Wrap(err, "IncrementPointsLeaderboard")
 		}
+	}
+
+	err = s.answerService.SaveToUser(ctx, gameCode, user.Username, &answer)
+	if err != nil {
+		log.Error().Err(err).Msg("SaveToUser")
+	}
+
+	err = s.answerService.SaveToQuestion(ctx, gameCode, &answer)
+	if err != nil {
+		log.Error().Err(err).Msg("SaveToQuestion")
 	}
 
 	return &answer, nil
@@ -92,10 +138,10 @@ func (s *QuestionService) AnwserQuestion(
 
 func (s *QuestionService) StatisticAnswersOfQuestion(
 	ctx context.Context,
-	gameID uint,
-	questionID uint,
+	gameCode string,
+	questionOffset uint,
 ) (*models.QuestionStatistic, error) {
-	question, err := s.questionRepo.GetByID(ctx, gameID, questionID)
+	question, err := s.questionRepo.GetByOffset(ctx, gameCode, questionOffset)
 
 	if err != nil {
 		if err == db.ErrNotFound {
@@ -103,57 +149,73 @@ func (s *QuestionService) StatisticAnswersOfQuestion(
 		}
 		return nil, err
 	}
-	// mock
-	questionStatistic := &models.QuestionStatistic{
-		QuestionID:         question.ID,
-		AnswerCountMap:     make(map[uint]int),
-		TotalAnswer:        10,
-		TotalCorrectAnswer: 5,
-		TotalWrongAnswer:   5,
+
+	if question == nil {
+		return nil, ErrQuestionNotFound
 	}
 
-	questionStatistic.AnswerCountMap[1] = 5
-	questionStatistic.AnswerCountMap[2] = 5
-	questionStatistic.AnswerCountMap[3] = 2
-	questionStatistic.AnswerCountMap[4] = 3
+	answers, err := s.answerService.GetAnswersOfQuestion(ctx, gameCode, question.ID)
 
-	// answers := QuestionAnswersMap[questionID]
-	// log.Info().Interface("answers", answers).Msg("StatisticAnswersOfQuestion")
-	// for _, answer := range *answers {
-	// 	if answer.IsCorrect {
-	// 		questionStatistic.TotalCorrectAnswer++
-	// 	} else {
-	// 		questionStatistic.TotalWrongAnswer++
-	// 	}
-	// 	for _, choice := range answer.Choices {
-	// 		questionStatistic.AnswerCountMap[choice]++
-	// 	}
-	// }
+	if err != nil {
+		log.Error().Err(err).Msg("GetAnswersOfQuestion")
+	}
+
+	log.Info().Interface("answers of question", answers).Msg("StatisticAnswersOfQuestion")
+
+	totalAnswered := 0
+	totalCorrect := 0
+
+	for _, answer := range answers {
+		if answer.IsCorrect {
+			totalCorrect++
+		}
+		totalAnswered += len(answer.Values)
+	}
+
+	questionStatistic := &models.QuestionStatistic{
+		QuestionID:         question.ID,
+		ChoiceStatistics:   buildChoiceStatistic(question, answers),
+		TotalAnswer:        totalAnswered,
+		TotalCorrectAnswer: totalCorrect,
+	}
 
 	return questionStatistic, nil
 }
 
 func calculateScore(answerTime int64, question *models.Question) int64 {
-	// var limitTime int64 = int64(question.LimitTime * 1000)
-	// if answerTime > limitTime {
-	// 	return 0
-	// }
-	// percent := float64(answerTime) / float64(limitTime)
-	// return int64(float64(question.Points) * percent)
-
-	return 100
+	return 10
+	var limitTime int64 = int64(question.LimitTime * 1000)
+	if answerTime > limitTime {
+		return 0
+	}
+	percent := float64(answerTime) / float64(limitTime)
+	return int64(float64(question.Points) * percent)
 }
 
-func storeAnswer(gameID uint, user *models.User, answer models.Answer) {
-	if UserAnwsersMap[gameID] == nil {
-		UserAnwsersMap[gameID] = &[]models.Answer{}
+func buildAnswerCountMap(answers []*models.Answer) map[string]int {
+	answerCountMap := make(map[string]int)
+	for _, answer := range answers {
+		for _, value := range answer.Values {
+			key := fmt.Sprint(value)
+			answerCountMap[key]++
+		}
 	}
-	*UserAnwsersMap[gameID] = append(*UserAnwsersMap[gameID], answer)
-	if QuestionAnswersMap[answer.QuestionID] == nil {
-		QuestionAnswersMap[answer.QuestionID] = &[]models.Answer{}
-	}
-	*QuestionAnswersMap[answer.QuestionID] = append(*QuestionAnswersMap[answer.QuestionID], answer)
+	return answerCountMap
+}
 
-	log.Info().Interface("UserAnwsersMap", UserAnwsersMap).Msg("storeAnswer")
-	log.Info().Interface("QuestionAnswersMap", QuestionAnswersMap).Msg("storeAnswer")
+func buildChoiceStatistic(question *models.Question, answers []*models.Answer) map[string]int {
+	answerCountMap := buildAnswerCountMap(answers)
+	choicesStatistic := make(map[string]int)
+	for _, choice := range question.Choices {
+		key := choice.Content
+		if models.IsQuestionTypeGroupMultipleChoice(question.Type) {
+			key = fmt.Sprint(choice.ID)
+		}
+		choicesStatistic[key] = 0
+	}
+
+	for key, answerCount := range answerCountMap {
+		choicesStatistic[key] = answerCount
+	}
+	return choicesStatistic
 }

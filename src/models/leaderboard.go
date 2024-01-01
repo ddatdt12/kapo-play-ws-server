@@ -1,9 +1,10 @@
 package models
 
 type Leaderboard struct {
-	ID     uint               `json:"id"`
-	GameID uint               `json:"gameId"`
-	Items  []*LeaderboardUser `json:"items"`
+	ID       uint               `json:"id"`
+	GameID   uint               `json:"gameId"`
+	GameCode string             `json:"gameCode"`
+	Items    []*LeaderboardUser `json:"items"`
 }
 
 type LeaderboardUser struct {

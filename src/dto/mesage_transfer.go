@@ -15,11 +15,13 @@ const (
 	MessageNewQuestion    MessageType = "new_question"
 	MessageQuestionResult MessageType = "question_result"
 	MessageEndGame        MessageType = "end_game"
+	MessageResetGame      MessageType = "reset_game"
 )
 
 // For player
 const (
 	MessageAnswerQuestion MessageType = "player/answer_question"
+	MessageUserRank       MessageType = "player/user_rank"
 )
 
 // For Host
@@ -30,6 +32,7 @@ const (
 	MessageNextAction   MessageType = "host/next_action"
 	MessageNextQuestion MessageType = "host/next_question"
 	MessageLeaderboard  MessageType = "host/get_leaderboard"
+	MessagePlayAgain    MessageType = "host/play_again"
 )
 
 // Error

@@ -30,6 +30,13 @@ type envConfigs struct {
 	REDIS_PORT     int    `mapstructure:"REDIS_PORT"`
 	REDIS_PASSWORD string `mapstructure:"REDIS_PASSWORD"`
 	REDIS_DB       int    `mapstructure:"REDIS_DB"`
+	BROKER_LIST    string `mapstructure:"BROKER_LIST"`
+	KAFKA_VERSION  string `mapstructure:"KAFKA_VERSION"`
+	KAFKA_USERNAME string `mapstructure:"KAFKA_USERNAME"`
+	KAFKA_PASSWORD string `mapstructure:"KAFKA_PASSWORD"`
+
+	ANSWER_SERVICE_URL string `mapstructure:"ANSWER_SERVICE_URL"`
+	GAME_SERVICE_URL   string `mapstructure:"GAME_SERVICE_URL"`
 }
 
 func StartBindEnvs() {
@@ -40,8 +47,20 @@ func StartBindEnvs() {
 	viper.BindEnv("DB_USER")
 	viper.BindEnv("DB_PASSWORD")
 	viper.BindEnv("DB_PORT")
+	viper.BindEnv("REDIS_HOST")
+	viper.BindEnv("REDIS_PORT")
+	viper.BindEnv("REDIS_PASSWORD")
+	viper.BindEnv("REDIS_DB")
+	viper.BindEnv("BROKER_LIST")
+	viper.BindEnv("KAFKA_VERSION")
+	viper.BindEnv("KAFKA_USERNAME")
+	viper.BindEnv("KAFKA_PASSWORD")
+
 	viper.BindEnv("JWT_EXPIRED")
 	viper.BindEnv("JWT_SECRET_KEY")
+
+	viper.BindEnv("ANSWER_SERVICE_URL")
+	viper.BindEnv("GAME_SERVICE_URL")
 }
 
 // Call to load the variables from env
@@ -56,7 +75,7 @@ func loadEnvVariables() (config *envConfigs) {
 	viper.AutomaticEnv()
 	viper.SetConfigType("env")
 	if APP_ENV == "development" {
-		viper.SetConfigFile(".env")
+		viper.SetConfigFile(".production.env")
 		if err := viper.ReadInConfig(); err != nil {
 			StartBindEnvs()
 			if _, ok := err.(viper.ConfigFileNotFoundError); ok {

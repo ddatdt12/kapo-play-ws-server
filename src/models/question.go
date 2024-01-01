@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ddatdt12/kapo-play-ws-server/internal/utils/types"
+	"github.com/ddatdt12/kapo-play-ws-server/internal/utils/constants"
 	"github.com/rs/zerolog/log"
 )
 
 type QuestionType string
+
+type QuestionTypeGroup string
 
 const (
 	QuestionTypeMultipleChoice QuestionType = "multiple_choice"
@@ -20,22 +22,32 @@ const (
 )
 
 type Question struct {
-	ID         uint
-	Content    string
-	Type       QuestionType
-	TemplateID uint
-	LimitTime  uint
-	Points     uint
-	Choices    []*QuestionChoice
-	StartAt    types.NullableTime
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID         uint              `json:"id"`
+	Offset     uint              `json:"offset"`
+	Content    string            `json:"content"`
+	Type       QuestionType      `json:"type"`
+	TemplateID uint              `json:"templateId"`
+	Game       *Game             `json:"game"`
+	LimitTime  uint              `json:"limitTime"`
+	Points     uint              `json:"points"`
+	Choices    []*QuestionChoice `json:"choices"`
+	StartedAt  *time.Time        `json:"startedAt"`
+	CreatedAt  time.Time         `json:"createdAt"`
+	UpdatedAt  time.Time         `json:"updatedAt"`
 }
 
 type QuestionChoice struct {
-	ID        uint
-	Content   string
-	IsCorrect bool
+	ID        uint   `json:"id"`
+	Content   string `json:"content"`
+	IsCorrect bool   `json:"isCorrect"`
+}
+
+func (s Question) GetEndedTime() time.Time {
+	return s.StartedAt.Add(time.Duration(s.LimitTime) * time.Second)
+}
+func (s *Question) Start() {
+	startTime := time.Now().Add(constants.WaitingTimeBeforeStart * time.Second)
+	s.StartedAt = &startTime
 }
 
 func (s QuestionChoice) ValidTypes() []QuestionType {
@@ -54,33 +66,38 @@ func (s QuestionType) IsValid() bool {
 func (q Question) VerifyAnswers(answers []any) bool {
 	log.Info().Msgf("VerifyAnswers: %v", answers)
 	log.Info().Msgf("VerifyAnswers - Choices: %v", q.Choices)
-	if len(answers) == 0 {
-		return false
-	}
+	log.Info().Msgf("VerifyAnswers - Type: %v", q.Type)
 
 	if q.Type == QuestionTypeMultipleChoice || q.Type == QuestionTypeTrueFalse {
+		if len(answers) == 0 {
+			return false
+		}
 		for _, choice := range q.Choices {
 			if choice.IsCorrect {
 				for _, answer := range answers {
-					answerID, ok := answer.(uint)
-					if !ok {
-						return false
-					}
+					answerId, ok := answer.(float64)
 
-					if choice.ID == answerID {
+					if ok && uint(answerId) == choice.ID {
 						return true
 					}
 				}
 			}
 		}
 	} else if q.Type == QuestionTypeTypeAnswer {
-		actualUserAnswer := answers[0].(string)
+		if len(answers) == 0 {
+			return false
+		}
+		answer, ok := answers[0].(string)
+		if !ok {
+			return false
+		}
+
 		for _, choice := range q.Choices {
-			if choice.IsCorrect && choice.Content == actualUserAnswer {
+			if choice.IsCorrect && choice.Content == answer {
 				return true
 			}
 		}
-	} else if q.Type == QuestionTypePoll || q.Type == QuestionWordCloud {
+	} else if q.Type == QuestionTypePoll || q.Type == QuestionWordCloud || q.Type == QuestionOpenEnded {
 		return true
 	}
 
@@ -102,4 +119,12 @@ func (m *QuestionChoice) UnmarshalBinary(data []byte) error {
 
 func (m *QuestionChoice) MarshalBinary() (data []byte, err error) {
 	return json.Marshal(m)
+}
+
+func IsQuestionTypeGroupMultipleChoice(questionType QuestionType) bool {
+	return questionType == QuestionTypeMultipleChoice || questionType == QuestionTypeTrueFalse
+}
+
+func IsQuestionTypeGroupTypeAnswer(questionType QuestionType) bool {
+	return questionType == QuestionTypeTypeAnswer || questionType == QuestionOpenEnded || questionType == QuestionTypePoll || questionType == QuestionWordCloud
 }

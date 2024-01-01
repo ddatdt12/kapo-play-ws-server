@@ -20,25 +20,20 @@ type GameSocket struct {
 	ClientSet map[*Client]bool
 	// Host
 	Host *Client
-	//Current Question
-	CurrentQuestion int64
-	// Status
-	Status models.GameStatus
 
-	// GameStage when game is playing
-	GameStage models.GameStage
-
-	// Answer
-	Answer *models.Answer
-	//Question
-	Question *models.Question
+	GameState *models.GameState
 }
 
-func NewGameSocket(gameInfo *models.Game) *GameSocket {
+func NewGameSocket(gameInfo *models.Game, gameState *models.GameState) *GameSocket {
+	if gameState == nil {
+		gameState = models.NewGameState()
+	}
+
 	return &GameSocket{
 		Info:      gameInfo,
 		Send:      make(chan dto.MessageTransfer, 256),
 		ClientSet: make(map[*Client]bool),
+		GameState: gameState,
 	}
 }
 
@@ -118,12 +113,4 @@ func (game *GameSocket) NotifyUpdatedListPlayers() {
 
 func (c *Client) String() string {
 	return fmt.Sprintf("Client %v", *c.User)
-}
-
-func (game *GameSocket) SetGameStage(stage models.GameStage) {
-	game.GameStage = stage
-}
-
-func (game *GameSocket) SetGameStatus(status models.GameStatus) {
-	game.Status = status
 }

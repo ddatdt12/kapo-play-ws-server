@@ -1,11 +1,15 @@
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Avatar   string `json:"avatar"`
+	ID       int64     `json:"id"`
+	Username string    `json:"username"`
+	Avatar   string    `json:"avatar"`
+	JoinedAt time.Time `json:"joinedAt"`
 }
 
 func CreateUser(username string) *User {

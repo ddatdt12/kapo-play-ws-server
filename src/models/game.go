@@ -23,12 +23,14 @@ const (
 )
 
 var (
+	GameStageNil          GameStage = ""
 	GameStageShowQuestion GameStage = "stage/show_question"
 	GameStageShowAnswer   GameStage = "stage/show_answer"
 )
 
 type Game struct {
 	ID             uint               `json:"id"`
+	Offset         uint               `json:"offset"`
 	Code           string             `json:"code"`
 	Name           string             `json:"name"`
 	Status         GameStatus         `json:"status"`

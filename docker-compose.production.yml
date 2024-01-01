@@ -1,0 +1,12 @@
+version: '3'
+services:
+  kapo-ws-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kapo-ws-server
+    restart: always
+    ports:
+      - 3001:3001
+    env_file:
+      - ./.production.env

@@ -1,25 +1,28 @@
 package ws
 
 import (
-	"time"
-
-	"github.com/ddatdt12/kapo-play-ws-server/internal/utils/constants"
-	"github.com/ddatdt12/kapo-play-ws-server/internal/utils/types"
 	"github.com/ddatdt12/kapo-play-ws-server/src/dto"
 	"github.com/ddatdt12/kapo-play-ws-server/src/models"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
 func router(c *Client, messageTransfer *dto.MessageTransfer) {
-	log.Info().Msgf("client exist ?: : %v", c != nil)
-	log.Info().Msgf("c.GameSocket.ClientSet: %v", c.GameSocket.ClientSet)
+	log.Info().Msgf("client Usser : %v", c.User)
+	log.Info().Msgf("c.GameSocket: %v", c.GameSocket)
+	// log.Info().Msgf("c.GameSocket.ClientSet: %v", c.GameSocket.ClientSet)
 
 	if messageTransfer.Type == dto.MessageFirstJoin {
+		if c.GameSocket.GameState.Status == models.GameStatusEnded {
+			responseGameEnded(c)
+			return
+		}
+
 		c.Notify(*dto.NewMessageTransfer(dto.MessageFirstJoin, c.Game,
 			map[string]interface{}{
-				"stage":    c.GameSocket.GameStage,
-				"status":   c.GameSocket.Status,
-				"question": c.GameSocket.Question,
+				"gameState":   c.GameSocket.GameState,
+				"currentUser": c.User,
+				"question":    c.GameSocket.GameState.Question,
 			},
 		))
 		c.GameSocket.NotifyUpdatedListPlayers()
@@ -33,25 +36,28 @@ func router(c *Client, messageTransfer *dto.MessageTransfer) {
 func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 	switch message.Type {
 	case dto.MessageStartGame:
-		c.GameSocket.CurrentQuestion = -1
-		currentQuest := c.GameSocket.CurrentQuestion
-
 		err := c.Hub.GameService.StartGame(c.ConnectionCtx.Ctx, c.Game.Code)
 		if err != nil {
-			ResponseError(c, err)
+			ResponseError(c, errors.Wrapf(err, "USER: %v | StartGame %s", c.User.Username, c.Game.Code))
 			return
 		}
-		question, err := c.Hub.QuestionService.GetQuestion(c.ConnectionCtx.Ctx, c.Game.ID, currentQuest+1)
+		c.GameSocket.GameState.SetCurrentQuestionOffset(0)
+		question, err := c.Hub.QuestionService.
+			GetQuestion(c.ConnectionCtx.Ctx, c.Game.Code, uint(c.GameSocket.GameState.CurrentQuestionOffset))
 
 		if err != nil {
-			ResponseError(c, err)
+			ResponseError(c, errors.Wrapf(err, "GetQuestion %s", c.Game.Code))
 			return
 		}
-		question.StartAt = types.NewNullableTime(time.Now().Add(constants.WaitingTimeBeforeStart * time.Second))
-		c.GameSocket.CurrentQuestion = currentQuest + 1
-		c.GameSocket.Question = question
-		c.GameSocket.Status = models.GameStatusPlaying
-		c.GameSocket.SetGameStage(models.GameStageShowQuestion)
+		question.Start()
+		err = c.Hub.QuestionService.Update(c.ConnectionCtx.Ctx, c.Game.Code, question)
+		if err != nil {
+			ResponseError(c, errors.Wrapf(err, "Update %s", c.Game.Code))
+			return
+		}
+		c.GameSocket.GameState.SetQuestion(question)
+		c.GameSocket.GameState.SetStatus(models.GameStatusPlaying)
+		c.GameSocket.GameState.SetGameStage(models.GameStageShowQuestion)
 		response := dto.MessageTransfer{
 			Type: dto.MessageNewQuestion,
 			Data: dto.NewQuestionRes(question),
@@ -62,50 +68,65 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 		c.GameSocket.NotifyAll(response)
 	case dto.MessageTimeUp:
 	case dto.MessageNextAction:
-		if c.GameSocket.GameStage == models.GameStageShowQuestion {
+		log.Info().Msgf("c.GameSocket.GameState: %v", c.GameSocket.GameState)
+		if c.GameSocket.GameState.GameStage == models.GameStageShowQuestion {
 			for k := range c.GameSocket.ClientSet {
 				response := dto.MessageTransfer{
 					Type: dto.MessageQuestionResult,
-					Data: dto.NewQuestionResult(c.GameSocket.Question, k.QuestionAnswersMap[c.GameSocket.Question.ID], nil),
+					Data: dto.NewQuestionResult(c.GameSocket.GameState.Question, k.QuestionAnswersMap[c.GameSocket.GameState.Question.ID], nil),
 				}
 				c.GameSocket.NotifyTo(k, response)
 			}
-			questionStatistic, _ := c.Hub.QuestionService.StatisticAnswersOfQuestion(c.ConnectionCtx.Ctx, c.Game.ID, c.GameSocket.Question.ID)
-			c.GameSocket.SetGameStage(models.GameStageShowAnswer)
+			questionStatistic, err := c.Hub.QuestionService.StatisticAnswersOfQuestion(c.ConnectionCtx.Ctx, c.Game.Code, uint(c.GameSocket.GameState.CurrentQuestionOffset))
+			if err != nil {
+				log.Error().Stack().Err(err).Msg("StatisticAnswersOfQuestion")
+			}
+			c.GameSocket.GameState.SetGameStage(models.GameStageShowAnswer)
 			c.GameSocket.NotifyHost(dto.MessageTransfer{
 				Type: dto.MessageQuestionResult,
-				Data: dto.NewQuestionResult(c.GameSocket.Question, nil, questionStatistic),
+				Data: dto.NewQuestionResult(c.GameSocket.GameState.Question, nil, questionStatistic),
 			})
-		} else if c.GameSocket.GameStage == models.GameStageShowAnswer {
-			c.GameSocket.SetGameStage(models.GameStageShowQuestion)
-			currentQuest := c.GameSocket.CurrentQuestion
-			question, err := c.Hub.QuestionService.GetQuestion(c.ConnectionCtx.Ctx, c.Game.ID, currentQuest+1)
+		} else if c.GameSocket.GameState.GameStage == models.GameStageShowAnswer {
+			c.GameSocket.GameState.SetGameStage(models.GameStageShowQuestion)
+			c.GameSocket.GameState.NextQuestion()
+			question, err := c.Hub.QuestionService.
+				GetQuestion(c.ConnectionCtx.Ctx,
+					c.Game.Code,
+					uint(c.GameSocket.GameState.CurrentQuestionOffset))
 
 			if err != nil {
-				ResponseError(c, err)
+				ResponseError(c, errors.Wrapf(err, "USER: %v | GetQuestion %s", c.User.Username, c.Game.Code))
 				return
 			}
 			// It means game is ended
 			if question == nil {
+				c.GameSocket.GameState.SetStatus(models.GameStatusEnded)
 				responseGameEnded(c)
 				return
 			}
 
-			question.StartAt = types.NewNullableTime(time.Now().Add(constants.WaitingTimeBeforeStart * time.Second))
-			c.GameSocket.CurrentQuestion = currentQuest + 1
-			c.GameSocket.Question = question
-			c.GameSocket.SetGameStage(models.GameStageShowQuestion)
+			question.Start()
+			err = c.Hub.QuestionService.Update(c.ConnectionCtx.Ctx, c.Game.Code, question)
+			if err != nil {
+				ResponseError(c, errors.Wrapf(err, "USER: %v | Update %s", c.User.Username, c.Game.Code))
+				return
+			}
+
+			c.GameSocket.GameState.SetQuestion(question)
+			c.GameSocket.GameState.SetGameStage(models.GameStageShowQuestion)
 			response := dto.MessageTransfer{
 				Type: dto.MessageNewQuestion,
 				Data: dto.NewQuestionRes(question),
 			}
 			c.GameSocket.NotifyAll(response)
+
+			responseUserRank(c, dto.MessageUserRank)
 		}
 	case dto.MessageLeaderboard:
-		leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.ID)
+		leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 
 		if err != nil {
-			ResponseError(c, err)
+			ResponseError(c, errors.Wrapf(err, "USER %v | GetLeaderboard %s", c.User.Username, c.Game.Code))
 			return
 		}
 
@@ -113,19 +134,45 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			Type: dto.MessageLeaderboard,
 			Data: leaderBoard.Items,
 		}
+	case dto.MessagePlayAgain:
+		// err := c.Hub.GameService.PlayAgain(c.ConnectionCtx.Ctx, c.Game.Code)
+
+		// if err != nil {
+		// 	ResponseError(c, errors.Wrapf(err, "PlayAgain %s", c.Game.Code))
+		// 	return
+		// }
+
+		// game, err := c.Hub.GameService.GetGame(c.ConnectionCtx.Ctx, c.Game.Code)
+		// if err != nil {
+		// 	ResponseError(c, errors.Wrapf(err, "GetGame %s", c.Game.Code))
+		// 	return
+		// }
+
+		// c.Game = game
+
+		c.GameSocket.GameState.Reset()
+
+		message := dto.MessageTransfer{
+			Data: c.Game,
+			Type: dto.MessageResetGame,
+		}
+		c.GameSocket.Send <- message
+		c.GameSocket.Host.Send <- message
 	}
 }
 
 func playerMessageHandler(c *Client, message *dto.MessageTransfer) {
+	log.Info().Msgf("playerMessageHandler - MessageTransfer: %v", message)
 	switch message.Type {
 	case dto.MessageAnswerQuestion:
 		var answerDto dto.AnswerQuestionReq
 		message.Binding(&answerDto)
 
 		log.Info().Msgf("answerDto: %v", answerDto)
-		answer, err := c.Hub.QuestionService.AnwserQuestion(c.ConnectionCtx.Ctx, c.Game.ID, c.User, answerDto)
+		answerDto.QuestionOffset = uint(c.GameSocket.GameState.CurrentQuestionOffset)
+		answer, err := c.Hub.QuestionService.AnwserQuestion(c.ConnectionCtx.Ctx, c.Game.Code, c.User, answerDto)
 		if err != nil {
-			ResponseError(c, err)
+			ResponseError(c, errors.Wrapf(err, "AnwserQuestion %v", answerDto))
 			return
 		}
 		c.QuestionAnswersMap[answer.QuestionID] = answer
@@ -140,24 +187,28 @@ func ResponseError(c *Client, err error) {
 	}
 }
 
-func responseGameEnded(c *Client) {
-	c.GameSocket.SetGameStatus(models.GameStatusEnded)
-	for client := range c.GameSocket.ClientSet {
-		userRank, err := c.Hub.LeaderboardService.GetUserRank(c.ConnectionCtx.Ctx, c.Game.ID, client.User.Username)
+func responseUserRank(host *Client, messageType dto.MessageType) {
+	for client := range host.GameSocket.ClientSet {
+		userRank, err := host.Hub.LeaderboardService.GetUserRank(host.ConnectionCtx.Ctx, host.Game.Code, client.User.Username)
 		if err != nil {
-			ResponseError(client, err)
+			ResponseError(client, errors.Wrapf(err, "USER %v | GetUserRank %s", client.User.Username, host.Game.Code))
 			return
 		}
-		c.GameSocket.NotifyTo(client, dto.MessageTransfer{
-			Type: dto.MessageEndGame,
+		host.GameSocket.NotifyTo(client, dto.MessageTransfer{
+			Type: messageType,
 			Data: userRank,
 		})
 	}
+}
 
-	leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.ID)
+func responseGameEnded(c *Client) {
+	c.GameSocket.GameState.SetStatus(models.GameStatusEnded)
+	responseUserRank(c, dto.MessageEndGame)
+
+	leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 
 	if err != nil {
-		ResponseError(c, err)
+		ResponseError(c, errors.Wrapf(err, "USER %v | GetLeaderboard %s", c.User.Username, c.Game.Code))
 		return
 	}
 
@@ -165,6 +216,4 @@ func responseGameEnded(c *Client) {
 		Type: dto.MessageEndGame,
 		Data: leaderBoard.Items,
 	}
-
-	return
 }
