@@ -10,7 +10,6 @@ import (
 	"github.com/ddatdt12/kapo-play-ws-server/src/models"
 	"github.com/ddatdt12/kapo-play-ws-server/src/repositories"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -65,10 +64,10 @@ func (s *GameService) StartGame(ctx context.Context, code string) error {
 	game.Status = models.GameStatusPlaying
 	game.StartTime = types.NewNullableTime(time.Now())
 
-	go func() {
-		err := s.gameClient.Start(game.ID)
-		log.Info().Msgf("StartGame: %v", err)
-	}()
+	// go func() {
+	// 	err := s.gameClient.Start(game.ID)
+	// 	log.Info().Msgf("StartGame: %v", err)
+	// }()
 
 	return nil
 }
@@ -83,10 +82,10 @@ func (s *GameService) EndGame(ctx context.Context, code string) error {
 	game.Status = models.GameStatusEnded
 	game.EndTime = types.NewNullableTime(time.Now())
 
-	go func() {
-		err := s.gameClient.End(game.ID)
-		log.Info().Msgf("EndGame: %v", err)
-	}()
+	// go func() {
+	// 	err := s.gameClient.End(game.ID)
+	// 	log.Info().Msgf("EndGame: %v", err)
+	// }()
 	return nil
 }
 
@@ -111,18 +110,18 @@ func (s *GameService) UpdateGameState(ctx context.Context, code string, gameStat
 }
 
 func (s *GameService) PlayAgain(ctx context.Context, code string) error {
-	game, err := s.GetGame(ctx, code)
-	if err != nil {
-		return errors.Wrap(err, "get game")
-	}
+	// game, err := s.GetGame(ctx, code)
+	// if err != nil {
+	// 	return errors.Wrap(err, "get game")
+	// }
 
-	if err = s.gameRepo.Reset(ctx, code); err != nil {
+	if err := s.gameRepo.Reset(ctx, code); err != nil {
 		return errors.Wrap(err, "update game")
 	}
 
-	if err = s.gameClient.PlayAgain(game.ID); err != nil {
-		return errors.Wrap(err, "play again")
-	}
+	// if err = s.gameClient.PlayAgain(game.ID); err != nil {
+	// 	return errors.Wrap(err, "play again")
+	// }
 
 	return nil
 }

@@ -135,12 +135,12 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			Data: leaderBoard.Items,
 		}
 	case dto.MessagePlayAgain:
-		// err := c.Hub.GameService.PlayAgain(c.ConnectionCtx.Ctx, c.Game.Code)
+		err := c.Hub.GameService.PlayAgain(c.ConnectionCtx.Ctx, c.Game.Code)
 
-		// if err != nil {
-		// 	ResponseError(c, errors.Wrapf(err, "PlayAgain %s", c.Game.Code))
-		// 	return
-		// }
+		if err != nil {
+			ResponseError(c, errors.Wrapf(err, "PlayAgain %s", c.Game.Code))
+			return
+		}
 
 		// game, err := c.Hub.GameService.GetGame(c.ConnectionCtx.Ctx, c.Game.Code)
 		// if err != nil {
