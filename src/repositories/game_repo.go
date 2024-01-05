@@ -97,6 +97,9 @@ func (r *GameRepository) Reset(ctx context.Context, code string) error {
 
 	leftKeys, _ := lo.Difference(keys, getIgnoreKeys(code))
 
+	if len(leftKeys) == 0 {
+		return nil
+	}
 	err := r.redis.DB().Del(ctx, leftKeys...).Err()
 
 	if err != nil {
