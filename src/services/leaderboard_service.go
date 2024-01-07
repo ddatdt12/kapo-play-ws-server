@@ -59,10 +59,10 @@ func (s *LeaderboardService) GetUserRank(ctx context.Context, gameCode string, u
 		Rank:     0,
 	}
 	if err != nil {
-		if err == redis.Nil {
-			return &userRank, nil
+		if err != redis.Nil {
+			log.Error().Err(err).Msg("get user rank")
 		}
-		return nil, errors.Wrap(err, "get user rank")
+		return &userRank, nil
 	}
 
 	userRank.Points = uint(zResult.Score)

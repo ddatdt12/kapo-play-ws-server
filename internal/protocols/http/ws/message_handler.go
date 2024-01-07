@@ -71,9 +71,18 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 		log.Info().Msgf("c.GameSocket.GameState: %v", c.GameSocket.GameState)
 		if c.GameSocket.GameState.GameStage == models.GameStageShowQuestion {
 			for k := range c.GameSocket.ClientSet {
+				userRank, err := c.Hub.LeaderboardService.GetUserRank(c.ConnectionCtx.Ctx, c.Game.Code, c.User.Username)
+
+				if err != nil {
+					ResponseError(c, errors.Wrapf(err, "USER %v | GetUserRank %s", c.User.Username, c.Game.Code))
+					return
+				}
 				response := dto.MessageTransfer{
 					Type: dto.MessageQuestionResult,
 					Data: dto.NewQuestionResult(c.GameSocket.GameState.Question, k.QuestionAnswersMap[c.GameSocket.GameState.Question.ID], nil),
+					Meta: map[string]interface{}{
+						"userRank": userRank,
+					},
 				}
 				c.GameSocket.NotifyTo(k, response)
 			}
@@ -119,8 +128,6 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 				Data: dto.NewQuestionRes(question),
 			}
 			c.GameSocket.NotifyAll(response)
-
-			responseUserRank(c, dto.MessageUserRank)
 		}
 	case dto.MessageLeaderboard:
 		leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
@@ -187,7 +194,7 @@ func ResponseError(c *Client, err error) {
 	}
 }
 
-func responseUserRank(host *Client, messageType dto.MessageType) {
+func responseUserRank(host *Client) {
 	for client := range host.GameSocket.ClientSet {
 		userRank, err := host.Hub.LeaderboardService.GetUserRank(host.ConnectionCtx.Ctx, host.Game.Code, client.User.Username)
 		if err != nil {
@@ -195,7 +202,7 @@ func responseUserRank(host *Client, messageType dto.MessageType) {
 			return
 		}
 		host.GameSocket.NotifyTo(client, dto.MessageTransfer{
-			Type: messageType,
+			Type: dto.MessageUserRank,
 			Data: userRank,
 		})
 	}
@@ -203,7 +210,7 @@ func responseUserRank(host *Client, messageType dto.MessageType) {
 
 func responseGameEnded(c *Client) {
 	c.GameSocket.GameState.SetStatus(models.GameStatusEnded)
-	responseUserRank(c, dto.MessageEndGame)
+	responseUserRank(c)
 
 	leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 
