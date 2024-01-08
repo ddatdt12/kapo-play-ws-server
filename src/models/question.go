@@ -11,6 +11,7 @@ import (
 type QuestionType string
 
 type QuestionTypeGroup string
+type QuestionStatus string
 
 const (
 	QuestionTypeMultipleChoice QuestionType = "multiple_choice"
@@ -19,6 +20,12 @@ const (
 	QuestionOpenEnded          QuestionType = "open_ended"
 	QuestionTypePoll           QuestionType = "poll"
 	QuestionWordCloud          QuestionType = "word_cloud"
+)
+
+const (
+	QuestionStatusWaiting QuestionStatus = "waiting"
+	QuestionStatusPlaying QuestionStatus = "playing"
+	QuestionStatusEnded   QuestionStatus = "ended"
 )
 
 type Question struct {
@@ -31,7 +38,9 @@ type Question struct {
 	LimitTime  uint              `json:"limitTime"`
 	Points     uint              `json:"points"`
 	Choices    []*QuestionChoice `json:"choices"`
+	Status     QuestionStatus    `json:"status"`
 	StartedAt  *time.Time        `json:"startedAt"`
+	EndedAt    *time.Time        `json:"endedAt"`
 	CreatedAt  time.Time         `json:"createdAt"`
 	UpdatedAt  time.Time         `json:"updatedAt"`
 }
@@ -104,13 +113,28 @@ func (q Question) VerifyAnswers(answers []any) bool {
 	return false
 }
 
-func (m *Question) UnmarshalBinary(data []byte) error {
-	log.Info().Msgf("UnmarshalBinary Question: %v", string(data))
-	return json.Unmarshal(data, m)
+func (ques *Question) UnmarshalBinary(data []byte) error {
+	ques.Status = QuestionStatusWaiting
+	if ques.StartedAt != nil {
+		ques.Status = QuestionStatusPlaying
+	}
+	if ques.EndedAt != nil {
+		ques.Status = QuestionStatusEnded
+	}
+
+	return json.Unmarshal(data, ques)
 }
 
-func (m *Question) MarshalBinary() (data []byte, err error) {
-	return json.Marshal(m)
+func (ques *Question) MarshalBinary() (data []byte, err error) {
+	ques.Status = QuestionStatusWaiting
+	if ques.StartedAt != nil {
+		ques.Status = QuestionStatusPlaying
+	}
+	if ques.EndedAt != nil {
+		ques.Status = QuestionStatusEnded
+	}
+
+	return json.Marshal(ques)
 }
 
 func (m *QuestionChoice) UnmarshalBinary(data []byte) error {

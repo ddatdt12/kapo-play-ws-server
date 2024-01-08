@@ -92,6 +92,7 @@ func (game *GameSocket) NotifyMembers(message dto.MessageTransfer) {
 func (game *GameSocket) NotifyTo(client *Client, message dto.MessageTransfer) {
 	client.Send <- message
 }
+
 func (game *GameSocket) NotifyHost(message dto.MessageTransfer) {
 	game.Host.Send <- message
 }

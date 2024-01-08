@@ -9,6 +9,7 @@ import (
 	"github.com/ddatdt12/kapo-play-ws-server/infras/db"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http/ws"
+	"github.com/ddatdt12/kapo-play-ws-server/src/handlers"
 	"github.com/ddatdt12/kapo-play-ws-server/src/repositories"
 	"github.com/ddatdt12/kapo-play-ws-server/src/services"
 
@@ -98,6 +99,7 @@ var gameClient = wire.NewSet(
 func InitHttpProtocol() *http.HttpImpl {
 	wire.Build(
 		http.NewHttpProtocol,
+		handlers.NewHttpHandler,
 		db.NewRedisClient,
 		ws.NewHub,
 		leaderboardSvc,

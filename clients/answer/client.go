@@ -78,7 +78,7 @@ func (c *AnswerClient) CreateAnswer(answer *CreateAnswer) error {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Error reading response body: %v", err)
+		log.Error().Stack().Err(err).Msg("Error reading response body")
 	}
 	sb := string(body)
 	log.Info().Msgf("Response body: %s", sb)

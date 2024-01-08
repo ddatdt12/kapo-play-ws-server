@@ -59,8 +59,10 @@ func (s *LeaderboardService) GetUserRank(ctx context.Context, gameCode string, u
 		Rank:     0,
 	}
 	if err != nil {
+		log.Error().Err(err).Msg("get user rank")
+
 		if err != redis.Nil {
-			log.Error().Err(err).Msg("get user rank")
+			log.Error().Err(err).Msg("get user rank unexpected error")
 		}
 		return &userRank, nil
 	}
@@ -86,7 +88,6 @@ func buildLeaderboardKey(gameCode string) string {
 }
 
 func buildLeaderboardUsers(zResult []redis.Z) []*models.LeaderboardUser {
-	log.Info().Interface("zResult", zResult).Msg("buildLeaderboardUsers")
 	items := make([]*models.LeaderboardUser, len(zResult))
 	for i, z := range zResult {
 		if z.Member == nil {

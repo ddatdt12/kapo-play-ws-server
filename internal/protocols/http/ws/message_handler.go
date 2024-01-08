@@ -8,23 +8,24 @@ import (
 )
 
 func router(c *Client, messageTransfer *dto.MessageTransfer) {
-	log.Info().Msgf("client Usser : %v", c.User)
-	log.Info().Msgf("c.GameSocket: %v", c.GameSocket)
-	// log.Info().Msgf("c.GameSocket.ClientSet: %v", c.GameSocket.ClientSet)
+	log.Info().Msgf("router client User : %v", c.User)
 
 	if messageTransfer.Type == dto.MessageFirstJoin {
+		log.Info().Msgf("game state: %v", *c.GameSocket.GameState)
 		if c.GameSocket.GameState.Status == models.GameStatusEnded {
 			responseGameEnded(c)
 			return
 		}
+		response := map[string]interface{}{
+			"gameState":   c.GameSocket.GameState,
+			"currentUser": c.User,
+			"question":    c.GameSocket.GameState.Question,
+		}
+		// if c.IsHost {
+		// 	response["question"] = c.GameSocket.GameState.Question
+		// }
 
-		c.Notify(*dto.NewMessageTransfer(dto.MessageFirstJoin, c.Game,
-			map[string]interface{}{
-				"gameState":   c.GameSocket.GameState,
-				"currentUser": c.User,
-				"question":    c.GameSocket.GameState.Question,
-			},
-		))
+		c.Notify(*dto.NewMessageTransfer(dto.MessageFirstJoin, c.Game, response))
 		c.GameSocket.NotifyUpdatedListPlayers()
 	} else if c.IsHost {
 		hostMessageHandler(c, messageTransfer)
@@ -70,22 +71,24 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 	case dto.MessageNextAction:
 		log.Info().Msgf("c.GameSocket.GameState: %v", c.GameSocket.GameState)
 		if c.GameSocket.GameState.GameStage == models.GameStageShowQuestion {
-			for k := range c.GameSocket.ClientSet {
-				userRank, err := c.Hub.LeaderboardService.GetUserRank(c.ConnectionCtx.Ctx, c.Game.Code, c.User.Username)
+			// For players
+			for client := range c.GameSocket.ClientSet {
+				userRank, err := c.Hub.LeaderboardService.GetUserRank(client.ConnectionCtx.Ctx, client.Game.Code, client.User.Username)
 
 				if err != nil {
-					ResponseError(c, errors.Wrapf(err, "USER %v | GetUserRank %s", c.User.Username, c.Game.Code))
+					ResponseError(c, errors.Wrapf(err, "USER %v | GetUserRank %s", client.User.Username, client.Game.Code))
 					return
 				}
 				response := dto.MessageTransfer{
 					Type: dto.MessageQuestionResult,
-					Data: dto.NewQuestionResult(c.GameSocket.GameState.Question, k.QuestionAnswersMap[c.GameSocket.GameState.Question.ID], nil),
+					Data: dto.NewQuestionResult(client.GameSocket.GameState.Question, client.QuestionAnswersMap[client.GameSocket.GameState.Question.ID], nil),
 					Meta: map[string]interface{}{
 						"userRank": userRank,
 					},
 				}
-				c.GameSocket.NotifyTo(k, response)
+				client.Notify(response)
 			}
+			// For host
 			questionStatistic, err := c.Hub.QuestionService.StatisticAnswersOfQuestion(c.ConnectionCtx.Ctx, c.Game.Code, uint(c.GameSocket.GameState.CurrentQuestionOffset))
 			if err != nil {
 				log.Error().Stack().Err(err).Msg("StatisticAnswersOfQuestion")
@@ -95,7 +98,8 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 				Type: dto.MessageQuestionResult,
 				Data: dto.NewQuestionResult(c.GameSocket.GameState.Question, nil, questionStatistic),
 			})
-		} else if c.GameSocket.GameState.GameStage == models.GameStageShowAnswer {
+		} else {
+			// else if c.GameSocket.GameState.GameStage == models.GameStageShowAnswer {
 			c.GameSocket.GameState.SetGameStage(models.GameStageShowQuestion)
 			c.GameSocket.GameState.NextQuestion()
 			question, err := c.Hub.QuestionService.
@@ -129,6 +133,9 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			}
 			c.GameSocket.NotifyAll(response)
 		}
+		// else {
+		// 	log.Error().Msgf("Invalid game stage: %v", c.GameSocket.GameState.GameStage)
+		// }
 	case dto.MessageLeaderboard:
 		leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 
@@ -149,22 +156,21 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			return
 		}
 
-		// game, err := c.Hub.GameService.GetGame(c.ConnectionCtx.Ctx, c.Game.Code)
-		// if err != nil {
-		// 	ResponseError(c, errors.Wrapf(err, "GetGame %s", c.Game.Code))
-		// 	return
-		// }
+		game, err := c.Hub.GameService.GetGame(c.ConnectionCtx.Ctx, c.Game.Code)
+		if err != nil {
+			ResponseError(c, errors.Wrapf(err, "GetGame %s", c.Game.Code))
+			return
+		}
 
-		// c.Game = game
-
+		c.Game = game
 		c.GameSocket.GameState.Reset()
-
 		message := dto.MessageTransfer{
 			Data: c.Game,
 			Type: dto.MessageResetGame,
 		}
-		c.GameSocket.Send <- message
-		c.GameSocket.Host.Send <- message
+		c.Notify(message)
+		c.GameSocket.Host.Notify(message)
+		c.GameSocket.NotifyUpdatedListPlayers()
 	}
 }
 
@@ -194,14 +200,14 @@ func ResponseError(c *Client, err error) {
 	}
 }
 
-func responseUserRank(host *Client) {
-	for client := range host.GameSocket.ClientSet {
-		userRank, err := host.Hub.LeaderboardService.GetUserRank(host.ConnectionCtx.Ctx, host.Game.Code, client.User.Username)
+func responseUserRankToPlayers(hub *Hub, clients map[*Client]bool) {
+	for client := range clients {
+		userRank, err := hub.LeaderboardService.GetUserRank(client.ConnectionCtx.Ctx, client.Game.Code, client.User.Username)
 		if err != nil {
-			ResponseError(client, errors.Wrapf(err, "USER %v | GetUserRank %s", client.User.Username, host.Game.Code))
+			ResponseError(client, errors.Wrapf(err, "USER %v | GetUserRank %s", client.User.Username, client.Game.Code))
 			return
 		}
-		host.GameSocket.NotifyTo(client, dto.MessageTransfer{
+		client.Notify(dto.MessageTransfer{
 			Type: dto.MessageUserRank,
 			Data: userRank,
 		})
@@ -210,7 +216,7 @@ func responseUserRank(host *Client) {
 
 func responseGameEnded(c *Client) {
 	c.GameSocket.GameState.SetStatus(models.GameStatusEnded)
-	responseUserRank(c)
+	responseUserRankToPlayers(c.Hub, c.GameSocket.ClientSet)
 
 	leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 

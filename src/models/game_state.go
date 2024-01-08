@@ -2,17 +2,20 @@ package models
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/rs/zerolog/log"
 )
 
 type GameState struct {
 	//Current Question Offset
-	CurrentQuestionOffset int `json:"current_question_offset"`
+	CurrentQuestionOffset int `json:"currentQuestionOffset"`
 	// GameStage when game is playing
-	GameStage GameStage `json:"game_stage"`
+	GameStage GameStage `json:"gameStage"`
 	// Status
 	Status GameStatus `json:"status"`
+	// Status
+	QuestionStatus QuestionStatus `json:"questionStatus"`
 	// Answer
 	Answer *Answer `json:"answer"`
 	//Question
@@ -69,6 +72,16 @@ func (gameState *GameState) SetQuestion(question *Question) {
 	}
 }
 
+func (gameState *GameState) StartQuestion(question *Question) {
+	gameState.QuestionStatus = QuestionStatusPlaying
+	now := time.Now()
+	gameState.Question.StartedAt = &now
+}
+
+func (gameState *GameState) EndQuestion(question *Question) {
+	gameState.QuestionStatus = QuestionStatusEnded
+}
+
 func (gameState *GameState) SetAnswer(answer *Answer) {
 	gameState.Answer = answer
 	if gameState.OnGameStateChanged != nil {
@@ -101,9 +114,27 @@ func (gameState *GameState) Reset() {
 }
 
 func (g GameState) MarshalBinary() ([]byte, error) {
+	if g.Question != nil {
+		g.Question.Status = QuestionStatusWaiting
+		if g.Question.StartedAt != nil {
+			g.Question.Status = QuestionStatusPlaying
+		}
+		if g.Question.EndedAt != nil {
+			g.Question.Status = QuestionStatusEnded
+		}
+	}
 	return json.Marshal(g)
 }
 
 func (g *GameState) UnmarshalBinary(data []byte) error {
+	if g.Question != nil {
+		g.Question.Status = QuestionStatusWaiting
+		if g.Question.StartedAt != nil {
+			g.Question.Status = QuestionStatusPlaying
+		}
+		if g.Question.EndedAt != nil {
+			g.Question.Status = QuestionStatusEnded
+		}
+	}
 	return json.Unmarshal(data, g)
 }

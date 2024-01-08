@@ -12,6 +12,7 @@ import (
 	"github.com/ddatdt12/kapo-play-ws-server/infras/db"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http"
 	"github.com/ddatdt12/kapo-play-ws-server/internal/protocols/http/ws"
+	"github.com/ddatdt12/kapo-play-ws-server/src/handlers"
 	"github.com/ddatdt12/kapo-play-ws-server/src/repositories"
 	"github.com/ddatdt12/kapo-play-ws-server/src/services"
 	"github.com/google/wire"
@@ -32,7 +33,8 @@ func InitHttpProtocol() *http.HttpImpl {
 	answerService := services.NewAnswerService(redisImpl, leaderboardService, answerAnswerClient)
 	questionService := services.NewQuestionService(questionRepository, gameService, userService, leaderboardService, answerService)
 	hub := ws.NewHub(gameService, userService, questionService, leaderboardService)
-	httpImpl := http.NewHttpProtocol(hub)
+	httpHandlerImpl := handlers.NewHttpHandler(gameService)
+	httpImpl := http.NewHttpProtocol(hub, httpHandlerImpl)
 	return httpImpl
 }
 

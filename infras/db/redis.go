@@ -18,9 +18,10 @@ func NewRedisClient() *RedisImpl {
 	host := fmt.Sprintf("%v:%v", configs.EnvConfigs.REDIS_HOST, configs.EnvConfigs.REDIS_PORT)
 
 	options := redis.Options{
-		Addr:     host,
-		Password: configs.EnvConfigs.REDIS_PASSWORD,
-		DB:       configs.EnvConfigs.REDIS_DB,
+		Addr:       host,
+		Password:   configs.EnvConfigs.REDIS_PASSWORD,
+		DB:         configs.EnvConfigs.REDIS_DB,
+		MaxRetries: 3,
 	}
 	log.Info().Msgf("Redis options: %v", options)
 

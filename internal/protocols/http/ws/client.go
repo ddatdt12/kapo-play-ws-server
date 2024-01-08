@@ -57,13 +57,10 @@ func (c *Client) WaitRegister() {
 	for {
 		select {
 		case <-c.ConnectionCtx.Ctx.Done():
-			log.Info().Msgf("Client %s is done", c.User.Username)
 			return
 		case <-c.IsReady:
-			log.Info().Msgf("Client %s is ready", c.User.Username)
 			return
 		case <-time.After(10 * time.Second):
-			log.Error().Msgf("Client %s is timeout", c.User.Username)
 			return
 		}
 	}
@@ -169,6 +166,5 @@ func (c *Client) CleanUp() {
 }
 
 func (c *Client) Notify(message dto.MessageTransfer) {
-	log.Info().Interface("message zxczx", message).Msg("message")
 	c.Send <- message
 }

@@ -113,7 +113,6 @@ func (h *Hub) Run() {
 
 				go gameSocket.Run()
 			}
-			log.Info().Interface("GameSocket.Info", gameSocket.Info).Msg("GameSocket.Info")
 			client.GameSocket = gameSocket
 
 			if client.IsHost {
@@ -201,9 +200,10 @@ func (hub *Hub) ServeClientWs(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Error().Err(err).Msg("Error when Upgrade WS connection")
 		renderJSON(w, http.StatusInternalServerError, map[string]any{
 			"message": "Error when joining game",
-			"details": err,
+			"details": err.Error(),
 		})
 		return
 	}

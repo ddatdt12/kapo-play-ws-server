@@ -63,41 +63,31 @@ func (s *AnswerService) SaveToUser(ctx context.Context, gameCode string, usernam
 		return err
 	}
 
-	userRank, err := s.leaderboard.GetUserRank(ctx, gameCode, username)
-	if err != nil {
-		return err
-	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().Msgf("Recovered in CreateAnswer client %v", r)
+			}
+		}()
 
-	answer.Report = &models.UserReport{
-		Points: int64(userRank.Points),
-		Rank:   int(userRank.Rank),
-	}
-	log.Info().Interface("answer out side", answer).Msg("SaveToUser out side")
-	// Send answer to answer service
-	// go func() {
-	// 	answer := answerclient.CreateAnswer{
-	// 		QuestionID: answer.QuestionID,
-	// 		Values:     answer.Values,
-	// 		GameID:     answer.GameID,
-	// 		IsCorrect:  answer.IsCorrect,
-	// 		Points:     answer.Points,
-	// 		AnswerTime: answer.AnswerTime,
-	// 		AnsweredAt: answer.AnsweredAt,
-	// 		Username:   answer.Username,
-	// 		Report: answerclient.UserReport{
-	// 			Points: int64(userRank.Points),
-	// 			Rank:   int(userRank.Rank),
-	// 		},
-	// 	}
+		answer := answerclient.CreateAnswer{
+			QuestionID: answer.QuestionID,
+			Values:     answer.Values,
+			GameID:     answer.GameID,
+			Points:     answer.Points,
+			AnswerTime: answer.AnswerTime,
+			AnsweredAt: answer.AnsweredAt,
+		}
 
-	// 	log.Info().Interface("answer", answer).Msg("SaveToUser")
+		log.Info().Interface("answer", answer).Msg("SaveToUser")
 
-	// 	err = s.answerClient.CreateAnswer(&answer)
-	// 	if err != nil {
-	// 		log.Error().Msgf("Error sending answer to answer service: %v", err)
-	// 	}
-	// 	log.Info().Msgf("CreateAnswer: %v", err)
-	// }()
+		err = s.answerClient.CreateAnswer(&answer)
+		if err != nil {
+			log.Error().Msgf("Error sending answer to answer service: %v", err)
+		} else {
+			log.Info().Msgf("CreateAnswer: %v", err)
+		}
+	}()
 
 	return nil
 }
