@@ -133,9 +133,6 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			}
 			c.GameSocket.NotifyAll(response)
 		}
-		// else {
-		// 	log.Error().Msgf("Invalid game stage: %v", c.GameSocket.GameState.GameStage)
-		// }
 	case dto.MessageLeaderboard:
 		leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 
@@ -168,8 +165,7 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			Data: c.Game,
 			Type: dto.MessageResetGame,
 		}
-		c.Notify(message)
-		c.GameSocket.Host.Notify(message)
+		c.GameSocket.NotifyAll(message)
 		c.GameSocket.NotifyUpdatedListPlayers()
 	}
 }
@@ -214,9 +210,23 @@ func responseUserRankToPlayers(hub *Hub, clients map[*Client]bool) {
 	}
 }
 
+func responseEndGameToPlayers(hub *Hub, clients map[*Client]bool) {
+	for client := range clients {
+		userRank, err := hub.LeaderboardService.GetUserRank(client.ConnectionCtx.Ctx, client.Game.Code, client.User.Username)
+		if err != nil {
+			ResponseError(client, errors.Wrapf(err, "USER %v | GetUserRank %s", client.User.Username, client.Game.Code))
+			return
+		}
+		client.Notify(dto.MessageTransfer{
+			Type: dto.MessageEndGame,
+			Data: userRank,
+		})
+	}
+}
+
 func responseGameEnded(c *Client) {
 	c.GameSocket.GameState.SetStatus(models.GameStatusEnded)
-	responseUserRankToPlayers(c.Hub, c.GameSocket.ClientSet)
+	responseEndGameToPlayers(c.Hub, c.GameSocket.ClientSet)
 
 	leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
 

@@ -8,7 +8,6 @@ import (
 type MessageType string
 
 // for both
-
 const (
 	MessageFirstJoin      MessageType = "first_join"
 	MessagePlayerList     MessageType = "player_list"
@@ -22,6 +21,7 @@ const (
 const (
 	MessageAnswerQuestion MessageType = "player/answer_question"
 	MessageUserRank       MessageType = "player/user_rank"
+	MessagePlayerEndGame  MessageType = "player/end_game"
 )
 
 // For Host

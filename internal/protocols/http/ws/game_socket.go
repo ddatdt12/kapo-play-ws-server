@@ -94,14 +94,16 @@ func (game *GameSocket) NotifyTo(client *Client, message dto.MessageTransfer) {
 }
 
 func (game *GameSocket) NotifyHost(message dto.MessageTransfer) {
+	if game.Host == nil {
+		return
+	}
+
 	game.Host.Send <- message
 }
 
 func (game *GameSocket) NotifyAll(message dto.MessageTransfer) {
 	game.Send <- message
-	if game.Host != nil {
-		game.Host.Send <- message
-	}
+	game.NotifyHost(message)
 }
 
 func (game *GameSocket) NotifyUpdatedListPlayers() {

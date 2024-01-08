@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ddatdt12/kapo-play-ws-server/internal/utils/constants"
-	"github.com/rs/zerolog/log"
 )
 
 type QuestionType string
@@ -26,6 +25,10 @@ const (
 	QuestionStatusWaiting QuestionStatus = "waiting"
 	QuestionStatusPlaying QuestionStatus = "playing"
 	QuestionStatusEnded   QuestionStatus = "ended"
+)
+
+const (
+	AcceptableDelayTime = 1
 )
 
 type Question struct {
@@ -73,10 +76,6 @@ func (s QuestionType) IsValid() bool {
 }
 
 func (q Question) VerifyAnswers(answers []any) bool {
-	log.Info().Msgf("VerifyAnswers: %v", answers)
-	log.Info().Msgf("VerifyAnswers - Choices: %v", q.Choices)
-	log.Info().Msgf("VerifyAnswers - Type: %v", q.Type)
-
 	if q.Type == QuestionTypeMultipleChoice || q.Type == QuestionTypeTrueFalse {
 		if len(answers) == 0 {
 			return false
@@ -111,6 +110,20 @@ func (q Question) VerifyAnswers(answers []any) bool {
 	}
 
 	return false
+}
+
+func (q Question) CalculatePoints(time float64, correctRatio float64) uint {
+	limitTime := float64(q.LimitTime) + AcceptableDelayTime
+	if time < 0 || time > limitTime || correctRatio <= 0 || correctRatio > 1 {
+		return 0
+	}
+
+	if time > float64(q.LimitTime) {
+		time = float64(q.LimitTime)
+	}
+
+	points := uint(float64(q.Points) * (2 - time/float64(q.LimitTime)) * correctRatio)
+	return points
 }
 
 func (ques *Question) UnmarshalBinary(data []byte) error {

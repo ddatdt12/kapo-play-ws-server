@@ -104,12 +104,17 @@ func (s *QuestionService) AnwserQuestion(
 
 	isCorrect := question.VerifyAnswers(answerDto.Answers)
 	var answerTime time.Duration = answeredAt.Sub(*question.StartedAt)
+	points := question.CalculatePoints(answerTime.Seconds(), 1)
+	if !isCorrect {
+		points = 0
+	}
+
 	answer := models.Answer{
 		Values:     answerDto.Answers,
 		QuestionID: question.ID,
 		AnswerTime: answerTime.Seconds(),
 		IsCorrect:  isCorrect,
-		Points:     calculateScore(answerTime.Milliseconds(), question),
+		Points:     int64(points),
 		User:       user,
 		GameID:     game.ID,
 		Username:   user.Username,
@@ -121,6 +126,8 @@ func (s *QuestionService) AnwserQuestion(
 		if err != nil {
 			return nil, errors.Wrap(err, "IncrementPointsLeaderboard")
 		}
+	} else {
+		answer.Points = 0
 	}
 
 	err = s.answerService.SaveToUser(ctx, gameCode, user.Username, &answer)
