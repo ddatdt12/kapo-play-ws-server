@@ -84,9 +84,8 @@ func (h *Hub) Run() {
 			if !ok {
 				gameState, err := h.GameService.GetGameState(client.ConnectionCtx.Ctx, client.Game.Code)
 
-				log.Info().Interface("Check gameState exist in register: ", gameState).Msg("gameState")
 				if err != nil && !errors.Is(err, db.ErrNotFound) {
-					log.Error().Err(err).Msg("Error when joining game")
+					log.Error().Err(err).Msg("Error when GetGameState")
 					client.Send <- dto.MessageTransfer{
 						Type: dto.Error,
 						Data: err.Error(),
@@ -221,7 +220,7 @@ func (hub *Hub) ServeClientWs(w http.ResponseWriter, r *http.Request) {
 	client.Register()
 	client.WaitRegister()
 
-	log.Info().Msgf("Client %s is next step", client.User.Username)
+	log.Info().Msgf("Client %s joined", client.User.Username)
 	go client.WritePump()
 	go client.ReadPump()
 }

@@ -38,7 +38,9 @@ func NewGameState() *GameState {
 }
 
 func (gameState *GameState) Start() {
-	gameState.Status = GameStatusPlaying
+	gameState.SetCurrentQuestionOffset(0)
+	gameState.SetStatus(GameStatusPlaying)
+	gameState.SetGameStage(GameStageShowQuestion)
 	if gameState.OnGameStateChanged != nil {
 		gameState.OnGameStateChanged(gameState)
 	}
@@ -106,6 +108,7 @@ func (gameState *GameState) Reset() {
 	gameState.CurrentQuestionOffset = 0
 	gameState.GameStage = GameStageNil
 	gameState.Status = GameStatusWaiting
+	gameState.QuestionStatus = QuestionStatusWaiting
 	gameState.Answer = nil
 	gameState.Question = nil
 	if gameState.OnGameStateChanged != nil {

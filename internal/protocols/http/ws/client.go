@@ -13,6 +13,7 @@ import (
 	"github.com/ddatdt12/kapo-play-ws-server/src/dto"
 	"github.com/ddatdt12/kapo-play-ws-server/src/models"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
@@ -167,4 +168,45 @@ func (c *Client) CleanUp() {
 
 func (c *Client) Notify(message dto.MessageTransfer) {
 	c.Send <- message
+}
+
+func (c *Client) NotifyLeaderBoard(messageType dto.MessageType) {
+	if !c.IsHost {
+		return
+	}
+	if messageType == "" {
+		messageType = dto.MessageLeaderboard
+	}
+
+	leaderBoard, err := c.Hub.LeaderboardService.GetLeaderboard(c.ConnectionCtx.Ctx, c.Game.Code)
+
+	if err != nil {
+		ResponseError(c, errors.Wrapf(err, "HOST %v | GetLeaderboard %s", c.User.Username, c.Game.Code))
+		return
+	}
+
+	c.Notify(dto.MessageTransfer{
+		Type: messageType,
+		Data: leaderBoard.Items,
+	})
+}
+
+func (c *Client) NotifyUserRank(messageType dto.MessageType) {
+	if c.IsHost {
+		return
+	}
+
+	if messageType == "" {
+		messageType = dto.MessageUserRank
+	}
+
+	userRank, err := c.Hub.LeaderboardService.GetUserRank(c.ConnectionCtx.Ctx, c.Game.Code, c.User.Username)
+	if err != nil {
+		ResponseError(c, errors.Wrapf(err, "USER %v | GetUserRank %s", c.User.Username, c.Game.Code))
+		return
+	}
+	c.Notify(dto.MessageTransfer{
+		Type: dto.MessageEndGame,
+		Data: userRank,
+	})
 }

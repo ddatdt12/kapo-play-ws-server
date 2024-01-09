@@ -121,13 +121,9 @@ func (s *QuestionService) AnwserQuestion(
 		AnsweredAt: answeredAt,
 	}
 
-	if isCorrect {
-		err = s.leaderboard.IncrementPointsLeaderboard(ctx, gameCode, user.Username, uint(answer.Points))
-		if err != nil {
-			return nil, errors.Wrap(err, "IncrementPointsLeaderboard")
-		}
-	} else {
-		answer.Points = 0
+	err = s.leaderboard.IncrementPointsLeaderboard(ctx, gameCode, user.Username, uint(answer.Points))
+	if err != nil {
+		return nil, errors.Wrap(err, "IncrementPointsLeaderboard error")
 	}
 
 	err = s.answerService.SaveToUser(ctx, gameCode, user.Username, &answer)
