@@ -52,6 +52,8 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			ResponseError(c, errors.Wrapf(err, "USER: %v | StartGame %s", c.User.Username, c.Game.Code))
 			return
 		}
+
+		log.Info().Msgf("c.GameSocket.GameState: %v", c.GameSocket.GameState)
 		question, err := c.Hub.QuestionService.
 			GetQuestion(c.ConnectionCtx.Ctx, c.Game.Code, uint(c.GameSocket.GameState.CurrentQuestionOffset))
 
@@ -59,15 +61,22 @@ func hostMessageHandler(c *Client, message *dto.MessageTransfer) {
 			ResponseError(c, errors.Wrapf(err, "GetQuestion %s", c.Game.Code))
 			return
 		}
-		err = c.Hub.QuestionService.Update(c.ConnectionCtx.Ctx, c.Game.Code, question)
-		if err != nil {
-			ResponseError(c, errors.Wrapf(err, "Update %s", c.Game.Code))
+
+		if question == nil {
+			log.Error().Msgf("question is nil")
+			// ResponseError(c, errors.Wrapf(err, "GetQuestion %s", c.Game.Code))
 			return
 		}
 
 		c.GameSocket.GameState.SetQuestion(question)
 		question.Start()
 		c.GameSocket.GameState.Start()
+
+		err = c.Hub.QuestionService.Update(c.ConnectionCtx.Ctx, c.Game.Code, question)
+		if err != nil {
+			ResponseError(c, errors.Wrapf(err, "Update %s", c.Game.Code))
+			return
+		}
 
 		response := dto.MessageTransfer{
 			Type: dto.MessageNewQuestion,

@@ -62,6 +62,7 @@ func (s *QuestionService) GetQuestion(ctx context.Context, gameCode string, ques
 }
 
 func (s *QuestionService) Update(ctx context.Context, gameCode string, question *models.Question) error {
+	log.Debug().Interface("question", question).Msg("Update")
 	question.Game = &models.Game{
 		Code: gameCode,
 	}
