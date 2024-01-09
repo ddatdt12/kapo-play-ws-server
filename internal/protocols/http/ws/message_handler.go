@@ -20,11 +20,19 @@ func router(c *Client, messageTransfer *dto.MessageTransfer) {
 				c.NotifyUserRank(dto.MessageEndGame)
 			}
 		}
+
 		response := map[string]interface{}{
 			"gameState":   c.GameSocket.GameState,
 			"currentUser": c.User,
-			"question":    c.GameSocket.GameState.Question,
 		}
+
+		if c.IsHost {
+			response["question"] = c.GameSocket.GameState.Question
+		}
+		if c.GameSocket.GameState.Question != nil {
+			response["questionStatus"] = c.GameSocket.GameState.Question.Status
+		}
+
 		log.Debug().Interface("response first join: ", response).Msg("response first join")
 
 		c.Notify(*dto.NewMessageTransfer(dto.MessageFirstJoin, c.Game, response))

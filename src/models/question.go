@@ -57,9 +57,10 @@ type QuestionChoice struct {
 func (s Question) GetEndedTime() time.Time {
 	return s.StartedAt.Add(time.Duration(s.LimitTime) * time.Second)
 }
-func (s *Question) Start() {
+func (q *Question) Start() {
 	startTime := time.Now().Add(constants.WaitingTimeBeforeStart * time.Second)
-	s.StartedAt = &startTime
+	q.StartedAt = &startTime
+	q.Status = QuestionStatusPlaying
 }
 
 func (s QuestionChoice) ValidTypes() []QuestionType {
